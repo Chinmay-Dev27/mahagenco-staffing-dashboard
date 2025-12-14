@@ -5,12 +5,12 @@ import pandas as pd
 st.set_page_config(page_title="Mahagenco Staffing", layout="wide")
 DATA_FILE = 'stitched_staffing_data.csv'
 
-# --- 1. LOAD & PREPARE DATA ---
+# --- 1. LOAD DATA ---
 @st.cache_data
 def load_data():
     try:
         df = pd.read_csv(DATA_FILE)
-        df['Staff_Details'] = df['Staff_Details'].fillna("No Data").astype(str)
+        df['Staff_Details'] = df['Staff_Details'].fillna("").astype(str)
         return df
     except FileNotFoundError:
         return pd.DataFrame()
@@ -25,7 +25,8 @@ def check_password():
         st.session_state['authenticated'] = False
     
     if not st.session_state['authenticated']:
-        st.sidebar.markdown("### 🔐 Admin Access")
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("🔐 Admin Access")
         pwd = st.sidebar.text_input("Password", type="password")
         if pwd == "admin123":
             st.session_state['authenticated'] = True
@@ -33,97 +34,99 @@ def check_password():
         return False
     return True
 
-# --- 3. POPUP DIALOG ---
-@st.dialog("📋 Position Details")
-def show_details(unit, desk, status, details):
-    st.markdown(f"### {unit} | {desk}")
-    
-    if status == "VACANCY":
-        st.error(f"🚨 STATUS: {status}")
-        st.markdown("**Action Required:** Immediate Deployment")
-    elif "Risk" in status:
-        st.warning(f"⚠️ STATUS: {status}")
-        st.markdown("**Action Required:** Verify Replacement")
-    else:
-        st.success(f"✅ STATUS: {status}")
-        
-    st.markdown("---")
-    st.markdown("#### 👥 Staff List:")
-    # Clean up the details text for display
-    clean_details = details.replace("|", "\n\n📌 **Note:**")
-    st.info(clean_details)
-
-# --- 4. MAIN APP ---
-st.title("🏭 Plant Manpower Dashboard")
-st.caption("Select any row in the table below to view staff details.")
+# --- 3. MAIN APP ---
+st.title("🏭 Plant Staffing Roster")
 
 df = load_data()
 
-if not df.empty:
-    # --- PREPARE TABLE DISPLAY ---
-    # We want a nice table with Status Colors
+if df.empty:
+    st.error("No data found. Please upload the CSV file.")
+else:
+    # --- SIDEBAR FILTERS (The "See Whatever You Want" part) ---
+    st.sidebar.header("🔍 Filter Data")
     
-    def color_status(val):
-        """Colors the Status column based on value"""
+    # 1. Unit Filter
+    all_units = sorted(df['Unit'].unique())
+    selected_units = st.sidebar.multiselect("Select Unit(s)", all_units, default=all_units)
+    
+    # 2. Desk Filter
+    all_desks = sorted(df['Desk'].unique())
+    selected_desks = st.sidebar.multiselect("Select Desk(s)", all_desks, default=all_desks)
+    
+    # 3. Name Search
+    search_query = st.sidebar.text_input("👤 Search by Staff Name")
+
+    # --- APPLY FILTERS ---
+    filtered_df = df.copy()
+    
+    # Filter by Unit
+    if selected_units:
+        filtered_df = filtered_df[filtered_df['Unit'].isin(selected_units)]
+        
+    # Filter by Desk
+    if selected_desks:
+        filtered_df = filtered_df[filtered_df['Desk'].isin(selected_desks)]
+        
+    # Filter by Search Text
+    if search_query:
+        # Search in Staff Details (Case insensitive)
+        filtered_df = filtered_df[filtered_df['Staff_Details'].str.contains(search_query, case=False, na=False)]
+
+    # --- DISPLAY METRICS ---
+    # Show quick counts based on the filtered view
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Positions Shown", len(filtered_df))
+    vacancies = len(filtered_df[filtered_df['Status'] == 'VACANCY'])
+    c2.metric("Vacancies", vacancies, delta_color="inverse")
+    risks = len(filtered_df[filtered_df['Status'].str.contains('Risk')])
+    c3.metric("Transfer Risks", risks, delta_color="inverse")
+
+    # --- MAIN DATA TABLE ---
+    st.markdown("### 📋 Staff Details List")
+    
+    def highlight_status(val):
+        color = ''
         if val == 'VACANCY':
-            return 'background-color: #fca5a5; color: #7f1d1d; font-weight: bold' # Red
+            color = 'background-color: #fca5a5; color: #7f1d1d; font-weight: bold' # Red
         elif 'Risk' in val:
-            return 'background-color: #fdba74; color: #9a3412; font-weight: bold' # Orange
+            color = 'background-color: #fdba74; color: #9a3412; font-weight: bold' # Orange
         elif 'OK' in val:
-            return 'background-color: #86efac; color: #14532d; font-weight: bold' # Green
-        return ''
+            color = 'background-color: #86efac; color: #14532d' # Green
+        return color
 
-    # Reorder columns for clarity
-    display_df = df[['Unit', 'Desk', 'Status', 'Staff_Details']].copy()
-    
-    # Sort by Status priority (VACANCY first)
-    display_df['sort_key'] = display_df['Status'].map({'VACANCY': 0, 'Risk (Transfer)': 1, 'OK': 2})
-    display_df = display_df.sort_values(['sort_key', 'Unit', 'Desk']).drop(columns=['sort_key'])
-
-    # --- INTERACTIVE TABLE ---
-    # Use on_select to capture clicks
-    event = st.dataframe(
-        display_df.style.applymap(color_status, subset=['Status']),
+    st.dataframe(
+        filtered_df.style.applymap(highlight_status, subset=['Status']),
         use_container_width=True,
-        hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row",
-        height=600
+        height=600,
+        column_config={
+            "Unit": st.column_config.TextColumn("Unit", width="small"),
+            "Desk": st.column_config.TextColumn("Desk", width="medium"),
+            "Status": st.column_config.TextColumn("Status", width="small"),
+            "Staff_Details": st.column_config.TextColumn("Staff Names / Remarks", width="large"),
+        }
     )
 
-    # --- HANDLE SELECTION ---
-    if len(event.selection.rows) > 0:
-        selected_index = event.selection.rows[0]
-        # Get the actual data row
-        row_data = display_df.iloc[selected_index]
-        
-        show_details(
-            row_data['Unit'],
-            row_data['Desk'],
-            row_data['Status'],
-            row_data['Staff_Details']
-        )
-
-# --- 5. ADMIN SECTION ---
+# --- 4. ADMIN SECTION ---
 st.markdown("---")
-with st.expander("🛠️ Update Staffing Data (Admin Only)"):
+with st.expander("🛠️ Admin Tools (Edit Data)"):
     if check_password():
-        c1, c2, c3 = st.columns([1, 1, 2])
+        st.write("Update the master database below:")
+        
+        c1, c2 = st.columns(2)
         with c1:
             u_in = st.selectbox("Unit", df['Unit'].unique())
             d_in = st.selectbox("Desk", df['Desk'].unique())
         with c2:
-            s_in = st.selectbox("New Status", ["OK", "VACANCY", "Risk (Transfer)"])
-        with c3:
-            n_in = st.text_input("Staff Names / Notes")
+            s_in = st.selectbox("Status", ["OK", "VACANCY", "Risk (Transfer)"])
+            n_in = st.text_area("Staff Details")
             
-        if st.button("Save Changes", type="primary"):
+        if st.button("Save Changes"):
             mask = (df['Unit'] == u_in) & (df['Desk'] == d_in)
             if mask.any():
                 df.loc[mask, 'Status'] = s_in
                 df.loc[mask, 'Staff_Details'] = n_in
                 save_data(df)
-                st.success("✅ Saved!")
+                st.success("✅ Database Updated!")
                 st.rerun()
             else:
-                st.error("Error: Could not find this Unit/Desk combination.")
+                st.error("Error: Selection not found in database.")
