@@ -1,5 +1,5 @@
 Unit,Desk,Staff_Name,Status,Action_Required,Original_Line
-Unit 6,PCR In-Charge,A.M. PARVAT Ad.EE (Transferred),Transferred,Verify Replacement,A.M. PARVAT Ad.EE (Transferred)
+Unit 6,PCR In-Charge,A.M. PARVAT Ad.EE,Transferred,Need Replacement,A.M. PARVAT Ad.EE
 Unit 6,PCR In-Charge,B.G. MESHRAM Ad.EE,Active,,B.G. MESHRAM Ad.EE
 Unit 6,PCR In-Charge,A.B. CHAPTE Ad.EE,Active,,A.B. CHAPTE Ad.EE
 Unit 6,PCR In-Charge,S.P. KALE ADD.E.E.,Active,,S.P. KALE ADD.E.E.
@@ -37,7 +37,7 @@ Unit 6,Turbine Control Desk,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ 
 Unit 7,Turbine Control Desk,S.S. RANE,Active,,S.S. RANE
 Unit 7,Turbine Control Desk,J.S. MATALE,Active,,J.S. MATALE
 Unit 7,Turbine Control Desk,S.S. KAPAWAR,Active,,S.S. KAPAWAR
-Unit 7,Turbine Control Desk,P.G. PANCHAL (Transferred),Transferred,Verify Replacement,P.G. PANCHAL (Transferred)
+Unit 7,Turbine Control Desk,P.G. PANCHAL (Transferred),Transferred,Need Replacement,P.G. PANCHAL (Transferred)
 Unit 7,Turbine Control Desk,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
 Unit 8,Turbine Control Desk,N.Giripunje,Active,,N.Giripunje
 Unit 8,Turbine Control Desk,Prayag Mangesh,Active,,Prayag Mangesh
