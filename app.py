@@ -1,144 +1,131 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
+import altair as alt
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Mahagenco Staffing Dashboard", layout="wide")
+st.set_page_config(page_title="Mahagenco Staffing", layout="wide")
 DATA_FILE = 'stitched_staffing_data.csv'
 
 # --- 1. LOAD DATA ---
 @st.cache_data
 def load_data():
     try:
-        return pd.read_csv(DATA_FILE)
+        df = pd.read_csv(DATA_FILE)
+        # Ensure 'Staff_Details' is string to avoid errors
+        df['Staff_Details'] = df['Staff_Details'].fillna("No Data").astype(str)
+        return df
     except FileNotFoundError:
-        st.error(f"File {DATA_FILE} not found. Please upload it.")
-        return pd.DataFrame(columns=['Unit', 'Desk', 'Status', 'Staff_Details'])
+        st.error(f"File {DATA_FILE} not found.")
+        return pd.DataFrame()
 
 def save_data(df):
     df.to_csv(DATA_FILE, index=False)
-    st.cache_data.clear() # Clear cache to reload new data
-    st.success("✅ Database Updated!")
+    st.cache_data.clear()
 
 # --- 2. AUTHENTICATION ---
 def check_password():
     if 'authenticated' not in st.session_state:
         st.session_state['authenticated'] = False
-        
+    
     if not st.session_state['authenticated']:
-        st.sidebar.markdown("### 🔐 Admin Login")
-        password = st.sidebar.text_input("Enter Password", type="password")
-        if password == "admin123": # You can change this password here
+        pwd = st.sidebar.text_input("🔐 Admin Password", type="password")
+        if pwd == "admin123":
             st.session_state['authenticated'] = True
             st.rerun()
         return False
     return True
 
-# --- 3. DASHBOARD MAIN ---
-st.title("🏭 Plant Manpower Dashboard")
+# --- 3. POPUP DIALOG FUNCTION ---
+@st.dialog("Staffing Details")
+def show_details(unit, desk, status, details):
+    st.markdown(f"### {unit} - {desk}")
+    
+    # Color code the status
+    if status == "VACANCY":
+        st.error(f"🚨 STATUS: {status}")
+    elif "Risk" in status:
+        st.warning(f"⚠️ STATUS: {status}")
+    else:
+        st.success(f"✅ STATUS: {status}")
+        
+    st.markdown("---")
+    st.markdown("#### 👥 Staff Deployed:")
+    # Format details nicely (replace commas with new lines for readability)
+    formatted_details = details.replace(",", "\n- ").replace("|", "\n\n**Note:**")
+    st.markdown(f"- {formatted_details}")
+    st.markdown("---")
+
+# --- 4. MAIN APP ---
+st.title("🏭 Interactive Manpower Dashboard")
 
 df = load_data()
 
-# Sidebar Filters
-st.sidebar.header("Filter View")
-all_units = df['Unit'].unique().tolist() if not df.empty else []
-selected_unit = st.sidebar.multiselect("Select Unit", all_units, default=all_units)
+# --- INTERACTIVE HEATMAP (Altair) ---
+st.subheader("👆 Click on any block to view details")
 
-if selected_unit:
-    df_view = df[df['Unit'].isin(selected_unit)]
-else:
-    df_view = df
+# Define Colors
+domain = ['VACANCY', 'Risk (Transfer)', 'OK']
+range_ = ['#ef4444', '#f97316', '#10b981'] # Red, Orange, Green
 
-# TABS
-tab1, tab2 = st.tabs(["📊 Interactive Heatmap", "📝 Admin Update"])
+# Create the Chart
+base = alt.Chart(df).encode(
+    x=alt.X('Unit', axis=alt.Axis(title=None, labelFontSize=14, labelFontWeight='bold')),
+    y=alt.Y('Desk', sort=['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
+                          'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)'],
+            axis=alt.Axis(title=None, labelFontSize=12)),
+)
 
-with tab1:
-    if not df_view.empty:
-        # PREPARE DATA FOR PLOTLY HEATMAP
-        status_map = {'VACANCY': 2, 'Risk (Transfer)': 1, 'OK': 0}
-        df_view['Score'] = df_view['Status'].map(status_map).fillna(0)
-        
-        # Pivot for Score (Color)
-        z_data = df_view.pivot_table(index='Desk', columns='Unit', values='Score', aggfunc='max')
-        
-        # Pivot for Text (Hover info)
-        text_data = df_view.pivot_table(index='Desk', columns='Unit', values='Staff_Details', aggfunc=lambda x: ' '.join(str(v) for v in x))
-        
-        # Fill NaN
-        z_data = z_data.fillna(0)
-        text_data = text_data.fillna("No Data")
-        
-        # Reorder Rows (Standard Sequence)
-        desired_order = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
-                         'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
-        existing_order = [d for d in desired_order if d in z_data.index]
-        z_data = z_data.reindex(existing_order)
-        text_data = text_data.reindex(existing_order)
+heatmap = base.mark_rect().encode(
+    color=alt.Color('Status', scale=alt.Scale(domain=domain, range=range_), legend=None),
+    tooltip=['Unit', 'Desk', 'Status']
+).properties(height=500)
 
-        # PLOTLY HEATMAP
-        fig = go.Figure(data=go.Heatmap(
-            z=z_data.values,
-            x=z_data.columns,
-            y=z_data.index,
-            text=text_data.values,
-            hoverinfo='text',
-            colorscale=[[0, '#ecfdf5'], [0.5, '#fff7ed'], [1, '#fef2f2']], # Green, Orange, Red
-            showscale=False,
-            xgap=3, ygap=3
-        ))
+text = base.mark_text(baseline='middle').encode(
+    text='Status',
+    color=alt.value('white') # White text on colored background
+)
 
-        # Annotations (Text on cells)
-        annotations = []
-        for i, row in enumerate(z_data.index):
-            for j, col in enumerate(z_data.columns):
-                val = z_data.loc[row, col]
-                if val == 2:
-                    status_text = "VACANCY"
-                    color = "#b91c1c"
-                elif val == 1:
-                    status_text = "RISK"
-                    color = "#c2410c"
-                else:
-                    status_text = "OK"
-                    color = "#047857"
-                
-                annotations.append(dict(
-                    x=col, y=row, text=status_text,
-                    xref="x", yref="y",
-                    showarrow=False, font=dict(color=color, weight='bold', size=14)
-                ))
-        
-        fig.update_layout(
-            title="Operational Heatmap (Hover for Staff Details)",
-            annotations=annotations,
-            height=600,
-            margin=dict(l=50, r=50, b=50, t=50)
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("Hover over any cell to see the specific staff members deployed there.")
-    else:
-        st.info("No data available for the selected filters.")
+# Combine heatmap + text
+chart = (heatmap + text).interactive()
 
-with tab2:
+# Render Chart with Selection Event
+event = st.altair_chart(chart, use_container_width=True, on_select="rerun", theme="streamlit")
+
+# --- HANDLE CLICK EVENT ---
+if len(event.selection.point_indices) > 0:
+    # Get the clicked row index
+    selected_index = event.selection.point_indices[0]
+    selected_row = df.iloc[selected_index]
+    
+    # Trigger the Popup Dialog
+    show_details(
+        selected_row['Unit'], 
+        selected_row['Desk'], 
+        selected_row['Status'], 
+        selected_row['Staff_Details']
+    )
+
+st.caption("ℹ️ Note: If the popup doesn't appear, ensure you are clicking directly on a colored block.")
+
+# --- ADMIN SECTION ---
+st.markdown("---")
+with st.expander("🛠️ Admin Tools (Update Data)"):
     if check_password():
-        st.subheader("Update Staffing Record")
+        st.write("Edit the database below:")
         
-        if not df.empty:
-            col1, col2 = st.columns(2)
-            with col1:
-                u_input = st.selectbox("Unit", df['Unit'].unique())
-                d_input = st.selectbox("Desk", df['Desk'].unique())
-            with col2:
-                s_input = st.selectbox("Status", ["OK", "VACANCY", "Risk (Transfer)"])
-                n_input = st.text_area("Staff Details / Notes")
-                
-            if st.button("Update Database"):
-                mask = (df['Unit'] == u_input) & (df['Desk'] == d_input)
-                if mask.any():
-                    df.loc[mask, 'Status'] = s_input
-                    df.loc[mask, 'Staff_Details'] = n_input
-                    save_data(df)
-                    st.rerun()
-                else:
-                    st.warning("Entry not found in master database.")
+        # Grid layout for editing
+        col1, col2 = st.columns(2)
+        with col1:
+            u_input = st.selectbox("Select Unit", df['Unit'].unique())
+            d_input = st.selectbox("Select Desk", df['Desk'].unique())
+        with col2:
+            s_input = st.selectbox("New Status", ["OK", "VACANCY", "Risk (Transfer)"])
+            n_input = st.text_area("Update Staff Names")
+            
+        if st.button("Update Record"):
+            mask = (df['Unit'] == u_input) & (df['Desk'] == d_input)
+            df.loc[mask, 'Status'] = s_input
+            df.loc[mask, 'Staff_Details'] = n_input
+            save_data(df)
+            st.success("Updated! Refreshing...")
+            st.rerun()
