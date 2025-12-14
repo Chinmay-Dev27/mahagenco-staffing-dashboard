@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Mahagenco Advanced Dashboard", layout="wide")
+st.set_page_config(page_title="Mahagenco Smart Dashboard", layout="wide")
 DATA_FILE = 'stitched_staffing_data.csv'
 
 # --- 1. LOAD DATA ---
@@ -11,7 +11,6 @@ DATA_FILE = 'stitched_staffing_data.csv'
 def load_data():
     try:
         df = pd.read_csv(DATA_FILE)
-        # Ensure text columns are strings to prevent errors
         df['Status'] = df['Status'].astype(str)
         df['Staff_Name'] = df['Staff_Name'].astype(str)
         return df
@@ -24,11 +23,11 @@ def save_data(df):
 
 df = load_data()
 
-# --- 2. SIDEBAR NAVIGATION ---
+# --- 2. SIDEBAR ---
 st.sidebar.title("🏭 Mahagenco")
-page = st.sidebar.radio("Go to:", ["Dashboard Home", "Search & Graphs", "Admin Update"])
+page = st.sidebar.radio("Go to:", ["Dashboard Home", "Search & Graphs", "Admin (Smart Editor)"])
 
-# --- PAGE 1: DASHBOARD HOME (Heatmap & Alerts) ---
+# --- PAGE 1: DASHBOARD HOME ---
 if page == "Dashboard Home":
     st.title("🏭 Plant Status Overview")
     
@@ -36,171 +35,184 @@ if page == "Dashboard Home":
         st.error("No data found. Please check your CSV file.")
     else:
         # METRICS
-        col1, col2, col3 = st.columns(3)
-        total_vacancies = len(df[df['Status'] == 'VACANCY'])
-        total_transfers = len(df[df['Status'] == 'Transferred'])
-        col1.metric("🚨 Total Vacancies", total_vacancies)
-        col2.metric("⚠️ Total Transfers", total_transfers)
-        col3.metric("✅ Total Active Staff", len(df[df['Status'] == 'Active']))
+        c1, c2, c3 = st.columns(3)
+        vac_count = len(df[df['Status'] == 'VACANCY'])
+        risk_count = len(df[df['Status'] == 'Transferred'])
+        c1.metric("🚨 Vacancies", vac_count)
+        c2.metric("⚠️ Transfers", risk_count)
+        c3.metric("✅ Active Staff", len(df[df['Status'] == 'Active']))
         
         st.markdown("---")
         
-        # HEATMAP (Aggregated View)
+        # HEATMAP
         st.subheader("1. Operational Heatmap")
-        st.caption("Red = Has Vacancy | Orange = Has Transfer Risk | Green = All Active")
         
-        # Aggregate data to get 1 status per Unit/Desk
         def get_aggregated_status(sub_df):
             statuses = sub_df['Status'].values
             if 'VACANCY' in statuses: return 'VACANCY'
             if 'Transferred' in statuses: return 'Risk (Transfer)'
             return 'OK'
             
-        # Group by Unit/Desk and unstack
         if not df.empty:
             heatmap_data = df.groupby(['Unit', 'Desk']).apply(get_aggregated_status).unstack()
-            
-            # FIX: Fill missing values (NaN) with "OK" to prevent crashes
             heatmap_data = heatmap_data.fillna("OK")
             
-            # Sort Desks logic
-            desired_order = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
-                          'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
-            # Only index rows that actually exist in the data
-            existing_order = [d for d in desired_order if d in heatmap_data.index]
-            # Append any others that might exist but aren't in the list
-            remaining = [d for d in heatmap_data.index if d not in desired_order]
+            # Sort Desks
+            order = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
+                     'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
+            # Handle sorting safely
+            existing_order = [d for d in order if d in heatmap_data.index]
+            remaining = [d for d in heatmap_data.index if d not in order]
             heatmap_data = heatmap_data.reindex(existing_order + remaining)
             
-            # Color Map
             def color_map(val):
-                val = str(val) # Safety check: convert to string
+                val = str(val)
                 if val == 'VACANCY': return 'background-color: #ef4444; color: white; font-weight: bold; text-align: center'
                 if 'Risk' in val: return 'background-color: #f97316; color: white; font-weight: bold; text-align: center'
                 return 'background-color: #10b981; color: white; text-align: center'
                 
             st.dataframe(heatmap_data.style.map(color_map), use_container_width=True)
 
-        # ALERTS LIST
+        # ALERTS
         st.markdown("---")
-        st.subheader("🔔 Critical Alerts")
+        st.subheader("🔔 Action Items")
         alerts = df[df['Status'].isin(['VACANCY', 'Transferred'])].copy()
-        
         if not alerts.empty:
-            # Color code the rows for the alert table
-            def highlight_alerts(row):
-                if row['Status'] == 'VACANCY':
-                    return ['background-color: #fee2e2; color: #991b1b'] * len(row)
-                if row['Status'] == 'Transferred':
-                    return ['background-color: #ffedd5; color: #9a3412'] * len(row)
-                return [''] * len(row)
+            def highlight(row):
+                if row['Status'] == 'VACANCY': return ['background-color: #fee2e2; color: #991b1b'] * len(row)
+                return ['background-color: #ffedd5; color: #9a3412'] * len(row)
 
             st.dataframe(
-                alerts[['Unit', 'Desk', 'Staff_Name', 'Status', 'Action_Required']].style.apply(highlight_alerts, axis=1),
+                alerts[['Unit', 'Desk', 'Staff_Name', 'Status', 'Action_Required']].style.apply(highlight, axis=1),
                 hide_index=True,
                 use_container_width=True
             )
         else:
-            st.success("No critical alerts found.")
+            st.success("All positions fulfilled.")
 
 # --- PAGE 2: SEARCH & GRAPHS ---
 elif page == "Search & Graphs":
-    st.title("📊 Detailed Staffing Analysis")
+    st.title("📊 Detailed Analysis")
     
     if df.empty:
-        st.warning("Data file is empty.")
+        st.warning("No Data")
     else:
-        # SELECTION PANEL
-        st.markdown("### Step 1: Select Area")
         c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
-            # Sort units naturally
-            units_sorted = sorted(df['Unit'].unique().astype(str))
-            sel_unit = st.selectbox("Select Unit", units_sorted)
+            u_sort = sorted(df['Unit'].unique().astype(str))
+            sel_unit = st.selectbox("Unit", u_sort)
         with c2:
-            # Filter Desks available for this unit
-            available_desks = sorted(df[df['Unit'] == sel_unit]['Desk'].unique().astype(str))
-            sel_desk = st.selectbox("Select Desk", available_desks)
+            d_sort = sorted(df[df['Unit'] == sel_unit]['Desk'].unique().astype(str))
+            sel_desk = st.selectbox("Desk", d_sort)
         with c3:
-            st.write("") # Spacer
-            st.write("") # Spacer
-            # Use session state to remember if button was clicked
-            if 'show_data' not in st.session_state: st.session_state.show_data = False
-            
-            if st.button("Show Staff Details", type="primary", use_container_width=True):
-                st.session_state.show_data = True
-            
-        if st.session_state.show_data:
+            st.write("")
+            st.write("")
+            if 'show_btn' not in st.session_state: st.session_state.show_btn = False
+            if st.button("Show Staff", type="primary", use_container_width=True):
+                st.session_state.show_btn = True
+                
+        if st.session_state.show_btn:
             st.markdown("---")
-            
-            # Filter Data
             subset = df[(df['Unit'] == sel_unit) & (df['Desk'] == sel_desk)]
             
-            # COLUMNS: GRAPH LEFT, TABLE RIGHT
             gc1, gc2 = st.columns([1, 2])
-            
             with gc1:
-                st.markdown("### Status Graph")
                 if not subset.empty:
-                    # Count Statuses
                     counts = subset['Status'].value_counts().reset_index()
                     counts.columns = ['Status', 'Count']
-                    
-                    # Plotly Pie Chart
                     fig = px.pie(counts, values='Count', names='Status', 
                                  color='Status',
                                  color_discrete_map={'VACANCY':'#ef4444', 'Transferred':'#f97316', 'Active':'#10b981'},
                                  hole=0.4)
-                    fig.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0))
+                    fig.update_layout(height=250, margin=dict(t=0, b=0, l=0, r=0))
                     st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.warning("No data found for this selection.")
-                    
+            
             with gc2:
-                st.markdown(f"### Staff List: {sel_unit} - {sel_desk}")
-                
+                st.write(f"**Staff at {sel_unit} - {sel_desk}**")
                 if not subset.empty:
-                    def highlight_rows(row):
-                        if row['Status'] == 'VACANCY':
-                            return ['background-color: #fee2e2; color: #991b1b'] * len(row)
-                        if row['Status'] == 'Transferred':
-                            return ['background-color: #ffedd5; color: #9a3412'] * len(row)
+                    def highlight(row):
+                        if row['Status'] == 'VACANCY': return ['background-color: #fee2e2; color: #991b1b'] * len(row)
+                        if row['Status'] == 'Transferred': return ['background-color: #ffedd5; color: #9a3412'] * len(row)
                         return [''] * len(row)
-
                     st.dataframe(
-                        subset[['Staff_Name', 'Status', 'Action_Required']].style.apply(highlight_rows, axis=1),
-                        use_container_width=True,
-                        height=300,
+                        subset[['Staff_Name', 'Status', 'Action_Required']].style.apply(highlight, axis=1),
+                        use_container_width=True, 
                         hide_index=True
                     )
-                else:
-                    st.info("No staff entries found for this desk.")
 
-# --- PAGE 3: ADMIN UPDATE ---
-elif page == "Admin Update":
-    st.title("🛠️ Admin Tools")
+# --- PAGE 3: SMART ADMIN EDITOR ---
+elif page == "Admin (Smart Editor)":
+    st.title("🛠️ Staffing Editor")
     
     pwd = st.text_input("Enter Admin Password", type="password")
     if pwd == "admin123":
-        st.success("Access Granted")
+        st.success("Unlocked")
+        st.info("Select a position below to EDIT it. This will replace the existing person/vacancy.")
         
-        st.markdown("#### Add / Edit Staff Entry")
-        
-        ac1, ac2 = st.columns(2)
-        with ac1:
-            u_in = st.selectbox("Unit", df['Unit'].unique() if not df.empty else ["Unit 6"])
-            d_in = st.selectbox("Desk", df['Desk'].unique() if not df.empty else ["PCR In-Charge"])
-        with ac2:
-            name_in = st.text_input("Staff Name (or 'VACANT POSITION')")
-            status_in = st.selectbox("Status", ["Active", "Transferred", "VACANCY"])
+        # 1. Select Unit and Desk
+        c1, c2 = st.columns(2)
+        with c1:
+            u_in = st.selectbox("Select Unit", df['Unit'].unique())
+        with c2:
+            d_in = st.selectbox("Select Desk", df[df['Unit'] == u_in]['Desk'].unique())
             
-        if st.button("Add / Update Entry"):
-            new_row = {
-                "Unit": u_in, "Desk": d_in, "Staff_Name": name_in,
-                "Status": status_in, "Action_Required": "Immediate Deployment" if status_in == "VACANCY" else "", 
-                "Original_Line": name_in
-            }
-            # Append
-            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            save_data(df)
-            st.success("Record Added! Go to Dashboard to see changes.")
+        # 2. Show Existing Rows for this desk
+        current_rows = df[(df['Unit'] == u_in) & (df['Desk'] == d_in)]
+        
+        if not current_rows.empty:
+            st.markdown("### Select which position to modify:")
+            
+            # Create a list of options formatted nicely
+            # We use the index to track which row to edit
+            options = {}
+            for idx, row in current_rows.iterrows():
+                label = f"{row['Staff_Name']}  [{row['Status']}]"
+                options[label] = idx
+            
+            selected_label = st.radio("Current Staff List:", list(options.keys()))
+            selected_index = options[selected_label]
+            
+            # 3. Edit Form
+            st.markdown("---")
+            st.markdown(f"**Editing:** `{selected_label}`")
+            
+            ec1, ec2 = st.columns(2)
+            with ec1:
+                # Pre-fill with existing data if not VACANT
+                current_val = df.loc[selected_index, 'Staff_Name']
+                if "VACANT" in current_val or "Transferred" in current_val:
+                    current_val = "" # Clear it for easier typing of new name
+                
+                new_name = st.text_input("New Person Name", value=current_val, placeholder="Enter Name of new staff")
+            
+            with ec2:
+                new_status = st.selectbox("New Status", ["Active", "Transferred", "VACANCY"])
+            
+            if st.button("Update Position"):
+                # Logic: Update the specific row index
+                if new_status == "VACANCY":
+                    df.at[selected_index, 'Staff_Name'] = "VACANT POSITION"
+                    df.at[selected_index, 'Status'] = "VACANCY"
+                    df.at[selected_index, 'Action_Required'] = "Immediate Deployment"
+                elif new_status == "Transferred":
+                    df.at[selected_index, 'Staff_Name'] = f"{new_name} (Transferred)"
+                    df.at[selected_index, 'Status'] = "Transferred"
+                    df.at[selected_index, 'Action_Required'] = "Verify Replacement"
+                else:
+                    df.at[selected_index, 'Staff_Name'] = new_name
+                    df.at[selected_index, 'Status'] = "Active"
+                    df.at[selected_index, 'Action_Required'] = ""
+                
+                # Save
+                save_data(df)
+                st.success("✅ Database Updated! The position has been filled/modified.")
+                st.rerun()
+                
+        else:
+            st.warning("No positions found for this desk.")
+            # Option to add a new slot if the roster expands?
+            if st.button("Add New Slot (Increase Strength)"):
+                new_row = {"Unit": u_in, "Desk": d_in, "Staff_Name": "VACANT POSITION", "Status": "VACANCY", "Action_Required": "New Slot Created"}
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+                save_data(df)
+                st.rerun()
