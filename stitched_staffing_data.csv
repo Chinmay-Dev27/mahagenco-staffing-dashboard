@@ -1,19 +1,85 @@
-Unit,Desk,Status,Staff_Details
-Unit 6,PCR In-Charge,VACANCY,"⚠️ Attention Required:, A.M. PARVAT Ad.EE (Transferred), B.G. MESHRAM Ad.EE, A.B. CHAPTE Ad.EE, S.P. KALE ADD.E.E., ⚠️ VACANT [Alert: A M Parvat - Verify Replacement]"
-Unit 7,PCR In-Charge,OK,"S.K. MUDE Add.EE, V.A. NAIKWADE Add.EE, T.D. PATIL DY.EE, A.N. GHATE Add.EE, R.D. AGHAV Add.EE"
-Unit 8,PCR In-Charge,OK,"Ajit Patil, S.Malphedhwar, B.M.Sirsath, Jabbar Shaikh, A.Gadekar"
-Unit 6,Boiler Control Desk,OK,"A.G. THOMBRE DY.EE, V.M. HAJARE AE, S.P. GAIKWAD DY.EE, M.Z. SHAIKH DY.EE, D.S. GIRI DY.EE"
-Unit 7,Boiler Control Desk,OK,"V.S. THORAT DY.EE, A.D. JADHAV AE, V.S. SHINDE AE, A.P. PATURDE DY.EE, A.R. YADAV DY.EE"
-Unit 8,Boiler Control Desk,OK,"Nitin Shete, Gadle, Raj Balvant, Nilesh Chotve, Prajesh Hatte"
-Unit 6,Turbine Control Desk,VACANCY,"⚠️ Attention Required:, P.S. PAL DY.EE, N.P. CHAVAN AE, S.S. SANGLE DY.EE, C.K. APRE DY.EE, ⚠️ VACANT [Alert: Position Unfilled - Immediate Deployment]"
-Unit 7,Turbine Control Desk,VACANCY,"⚠️ Attention Required:, S.S. RANE, J.S. MATALE, S.S. KAPAWAR, P.G. PANCHAL (Transferred), ⚠️ VACANT [Alert: Position Unfilled - Immediate Deployment]"
-Unit 8,Turbine Control Desk,OK,"N.Giripunje, Prayag Mangesh, Bhaskar Tarse, Ranjit Pokle, Ravi Bhalerao"
-Unit 6,Drum Level Desk,VACANCY,"⚠️ Attention Required:, S.S. INGLE DY.EE, J.S. SURYAWANSHI AE (Transferred), S.R. INGALE DY.EE, S.G. PAWAR AE, ⚠️ VACANT [Alert: Position Unfilled - Immediate Deployment]"
-Unit 7,Drum Level Desk,Risk (Transfer),"P.A. HUNMANTE AE (Transferred), R.A. PETHE DY.EE, A.J. PATTANKUDE DY.EE, S.S. KOHALE DY.EE, M.B. BHOSLE [Alert: P Hanumante - Verify Replacement]"
-Unit 8,Drum Level Desk,OK,"Pawan Rokde, Balaji Kangaonkar, Sontakke Sunil, Salegaokar S., Sandeep Gaikwad (Add.E.E.)"
-Unit 6,Boiler API (BAPI),OK,"K.R. JADHAV AE, G.B. AKOLE AE, S.S. PATIL JE, M. SIDIQUI JE"
-Unit 7,Boiler API (BAPI),VACANCY,"⚠️ Attention Required:, S M Lute(Transferred), S.E.Gitte, N K Jadhav, ⚠️ VACANT [Alert: Position Unfilled - Immediate Deployment]"
-Unit 8,Boiler API (BAPI),OK,"S S Padkantwar, C R Guddewadi, K S Dhopte, S S Thosar"
-Unit 6,Turbine API (TAPI),OK,"V.M. WASNIK AE, K.J. KUMBHAR AE, S.D. BURANDE AE, S.M. LOKANDE JE"
-Unit 7,Turbine API (TAPI),OK,"S A Kulkarni, S L Sarwade, A.S.Khot, P R Thakre"
-Unit 8,Turbine API (TAPI),OK,"A.L.Dongade, S U Chatrubhuj, S.H.Shaikh, L.G.Kale"
+Unit,Desk,Staff_Name,Status,Action_Required,Original_Line
+Unit 6,PCR In-Charge,"A.M. PARVAT Ad.EE (Transferred)",Transferred,Verify Replacement,"A.M. PARVAT Ad.EE (Transferred)"
+Unit 6,PCR In-Charge,B.G. MESHRAM Ad.EE,Active,,B.G. MESHRAM Ad.EE
+Unit 6,PCR In-Charge,A.B. CHAPTE Ad.EE,Active,,A.B. CHAPTE Ad.EE
+Unit 6,PCR In-Charge,S.P. KALE ADD.E.E.,Active,,S.P. KALE ADD.E.E.
+Unit 6,PCR In-Charge,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
+Unit 7,PCR In-Charge,S.K. MUDE Add.EE,Active,,S.K. MUDE Add.EE
+Unit 7,PCR In-Charge,V.A. NAIKWADE Add.EE,Active,,V.A. NAIKWADE Add.EE
+Unit 7,PCR In-Charge,T.D. PATIL DY.EE,Active,,T.D. PATIL DY.EE
+Unit 7,PCR In-Charge,A.N. GHATE Add.EE,Active,,A.N. GHATE Add.EE
+Unit 7,PCR In-Charge,R.D. AGHAV Add.EE,Active,,R.D. AGHAV Add.EE
+Unit 8,PCR In-Charge,Ajit Patil,Active,,Ajit Patil
+Unit 8,PCR In-Charge,S.Malphedhwar,Active,,S.Malphedhwar
+Unit 8,PCR In-Charge,B.M.Sirsath,Active,,B.M.Sirsath
+Unit 8,PCR In-Charge,Jabbar Shaikh,Active,,Jabbar Shaikh
+Unit 8,PCR In-Charge,A.Gadekar,Active,,A.Gadekar
+Unit 6,Boiler Control Desk,A.G. THOMBRE DY.EE,Active,,A.G. THOMBRE DY.EE
+Unit 6,Boiler Control Desk,V.M. HAJARE AE,Active,,V.M. HAJARE AE
+Unit 6,Boiler Control Desk,S.P. GAIKWAD DY.EE,Active,,S.P. GAIKWAD DY.EE
+Unit 6,Boiler Control Desk,M.Z. SHAIKH DY.EE,Active,,M.Z. SHAIKH DY.EE
+Unit 6,Boiler Control Desk,D.S. GIRI DY.EE,Active,,D.S. GIRI DY.EE
+Unit 7,Boiler Control Desk,V.S. THORAT DY.EE,Active,,V.S. THORAT DY.EE
+Unit 7,Boiler Control Desk,A.D. JADHAV AE,Active,,A.D. JADHAV AE
+Unit 7,Boiler Control Desk,V.S. SHINDE AE,Active,,V.S. SHINDE AE
+Unit 7,Boiler Control Desk,A.P. PATURDE DY.EE,Active,,A.P. PATURDE DY.EE
+Unit 7,Boiler Control Desk,A.R. YADAV DY.EE,Active,,A.R. YADAV DY.EE
+Unit 8,Boiler Control Desk,Nitin Shete,Active,,Nitin Shete
+Unit 8,Boiler Control Desk,Gadle,Active,,Gadle
+Unit 8,Boiler Control Desk,Raj Balvant,Active,,Raj Balvant
+Unit 8,Boiler Control Desk,Nilesh Chotve,Active,,Nilesh Chotve
+Unit 8,Boiler Control Desk,Prajesh Hatte,Active,,Prajesh Hatte
+Unit 6,Turbine Control Desk,P.S. PAL DY.EE,Active,,P.S. PAL DY.EE
+Unit 6,Turbine Control Desk,N.P. CHAVAN AE,Active,,N.P. CHAVAN AE
+Unit 6,Turbine Control Desk,S.S. SANGLE DY.EE,Active,,S.S. SANGLE DY.EE
+Unit 6,Turbine Control Desk,C.K. APRE DY.EE,Active,,C.K. APRE DY.EE
+Unit 6,Turbine Control Desk,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
+Unit 7,Turbine Control Desk,S.S. RANE,Active,,S.S. RANE
+Unit 7,Turbine Control Desk,J.S. MATALE,Active,,J.S. MATALE
+Unit 7,Turbine Control Desk,S.S. KAPAWAR,Active,,S.S. KAPAWAR
+Unit 7,Turbine Control Desk,"P.G. PANCHAL (Transferred)",Transferred,Verify Replacement,"P.G. PANCHAL (Transferred)"
+Unit 7,Turbine Control Desk,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
+Unit 8,Turbine Control Desk,N.Giripunje,Active,,N.Giripunje
+Unit 8,Turbine Control Desk,Prayag Mangesh,Active,,Prayag Mangesh
+Unit 8,Turbine Control Desk,Bhaskar Tarse,Active,,Bhaskar Tarse
+Unit 8,Turbine Control Desk,Ranjit Pokle,Active,,Ranjit Pokle
+Unit 8,Turbine Control Desk,Ravi Bhalerao,Active,,Ravi Bhalerao
+Unit 6,Drum Level Desk,S.S. INGLE DY.EE,Active,,S.S. INGLE DY.EE
+Unit 6,Drum Level Desk,"J.S. SURYAWANSHI AE (Transferred)",Transferred,Verify Replacement,"J.S. SURYAWANSHI AE (Transferred)"
+Unit 6,Drum Level Desk,S.R. INGALE DY.EE,Active,,S.R. INGALE DY.EE
+Unit 6,Drum Level Desk,S.G. PAWAR AE,Active,,S.G. PAWAR AE
+Unit 6,Drum Level Desk,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
+Unit 7,Drum Level Desk,"P.A. HUNMANTE AE (Transferred)",Transferred,Verify Replacement,"P.A. HUNMANTE AE (Transferred)"
+Unit 7,Drum Level Desk,R.A. PETHE DY.EE,Active,,R.A. PETHE DY.EE
+Unit 7,Drum Level Desk,A.J. PATTANKUDE DY.EE,Active,,A.J. PATTANKUDE DY.EE
+Unit 7,Drum Level Desk,S.S. KOHALE DY.EE,Active,,S.S. KOHALE DY.EE
+Unit 7,Drum Level Desk,M.B. BHOSLE,Active,,M.B. BHOSLE
+Unit 8,Drum Level Desk,Pawan Rokde,Active,,Pawan Rokde
+Unit 8,Drum Level Desk,Balaji Kangaonkar,Active,,Balaji Kangaonkar
+Unit 8,Drum Level Desk,Sontakke Sunil,Active,,Sontakke Sunil
+Unit 8,Drum Level Desk,Salegaokar S.,Active,,Salegaokar S.
+Unit 8,Drum Level Desk,"Sandeep Gaikwad (Add.E.E.)",Active,,"Sandeep Gaikwad (Add.E.E.)"
+Unit 6,Boiler API (BAPI),K.R. JADHAV AE,Active,,K.R. JADHAV AE
+Unit 6,Boiler API (BAPI),G.B. AKOLE AE,Active,,G.B. AKOLE AE
+Unit 6,Boiler API (BAPI),S.S. PATIL JE,Active,,S.S. PATIL JE
+Unit 6,Boiler API (BAPI),M. SIDIQUI JE,Active,,M. SIDIQUI JE
+Unit 7,Boiler API (BAPI),"S M Lute(Transferred)",Transferred,Verify Replacement,"S M Lute(Transferred)"
+Unit 7,Boiler API (BAPI),S.E.Gitte,Active,,S.E.Gitte
+Unit 7,Boiler API (BAPI),N K Jadhav,Active,,N K Jadhav
+Unit 7,Boiler API (BAPI),VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
+Unit 8,Boiler API (BAPI),S S Padkantwar,Active,,S S Padkantwar
+Unit 8,Boiler API (BAPI),C R Guddewadi,Active,,C R Guddewadi
+Unit 8,Boiler API (BAPI),K S Dhopte,Active,,K S Dhopte
+Unit 8,Boiler API (BAPI),S S Thosar,Active,,S S Thosar
+Unit 6,Turbine API (TAPI),V.M. WASNIK AE,Active,,V.M. WASNIK AE
+Unit 6,Turbine API (TAPI),K.J. KUMBHAR AE,Active,,K.J. KUMBHAR AE
+Unit 6,Turbine API (TAPI),S.D. BURANDE AE,Active,,S.D. BURANDE AE
+Unit 6,Turbine API (TAPI),S.M. LOKANDE JE,Active,,S.M. LOKANDE JE
+Unit 7,Turbine API (TAPI),S A Kulkarni,Active,,S A Kulkarni
+Unit 7,Turbine API (TAPI),S L Sarwade,Active,,S L Sarwade
+Unit 7,Turbine API (TAPI),A.S.Khot,Active,,A.S.Khot
+Unit 7,Turbine API (TAPI),P R Thakre,Active,,P R Thakre
+Unit 8,Turbine API (TAPI),A.L.Dongade,Active,,A.L.Dongade
+Unit 8,Turbine API (TAPI),S U Chatrubhuj,Active,,S U Chatrubhuj
+Unit 8,Turbine API (TAPI),S.H.Shaikh,Active,,S.H.Shaikh
+Unit 8,Turbine API (TAPI),L.G.Kale,Active,,L.G.Kale
