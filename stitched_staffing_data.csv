@@ -1,5 +1,5 @@
 Unit,Desk,Staff_Name,Status,Action_Required,Original_Line
-Unit 6,PCR In-Charge,"A.M. PARVAT Ad.EE (Transferred)",Transferred,Verify Replacement,"A.M. PARVAT Ad.EE (Transferred)"
+Unit 6,PCR In-Charge,A.M. PARVAT Ad.EE (Transferred),Transferred,Verify Replacement,A.M. PARVAT Ad.EE (Transferred)
 Unit 6,PCR In-Charge,B.G. MESHRAM Ad.EE,Active,,B.G. MESHRAM Ad.EE
 Unit 6,PCR In-Charge,A.B. CHAPTE Ad.EE,Active,,A.B. CHAPTE Ad.EE
 Unit 6,PCR In-Charge,S.P. KALE ADD.E.E.,Active,,S.P. KALE ADD.E.E.
@@ -37,7 +37,7 @@ Unit 6,Turbine Control Desk,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ 
 Unit 7,Turbine Control Desk,S.S. RANE,Active,,S.S. RANE
 Unit 7,Turbine Control Desk,J.S. MATALE,Active,,J.S. MATALE
 Unit 7,Turbine Control Desk,S.S. KAPAWAR,Active,,S.S. KAPAWAR
-Unit 7,Turbine Control Desk,"P.G. PANCHAL (Transferred)",Transferred,Verify Replacement,"P.G. PANCHAL (Transferred)"
+Unit 7,Turbine Control Desk,P.G. PANCHAL (Transferred),Transferred,Verify Replacement,P.G. PANCHAL (Transferred)
 Unit 7,Turbine Control Desk,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
 Unit 8,Turbine Control Desk,N.Giripunje,Active,,N.Giripunje
 Unit 8,Turbine Control Desk,Prayag Mangesh,Active,,Prayag Mangesh
@@ -45,11 +45,11 @@ Unit 8,Turbine Control Desk,Bhaskar Tarse,Active,,Bhaskar Tarse
 Unit 8,Turbine Control Desk,Ranjit Pokle,Active,,Ranjit Pokle
 Unit 8,Turbine Control Desk,Ravi Bhalerao,Active,,Ravi Bhalerao
 Unit 6,Drum Level Desk,S.S. INGLE DY.EE,Active,,S.S. INGLE DY.EE
-Unit 6,Drum Level Desk,"J.S. SURYAWANSHI AE (Transferred)",Transferred,Verify Replacement,"J.S. SURYAWANSHI AE (Transferred)"
+Unit 6,Drum Level Desk,J.S. SURYAWANSHI AE (Transferred),Transferred,Verify Replacement,J.S. SURYAWANSHI AE (Transferred)
 Unit 6,Drum Level Desk,S.R. INGALE DY.EE,Active,,S.R. INGALE DY.EE
 Unit 6,Drum Level Desk,S.G. PAWAR AE,Active,,S.G. PAWAR AE
 Unit 6,Drum Level Desk,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
-Unit 7,Drum Level Desk,"P.A. HUNMANTE AE (Transferred)",Transferred,Verify Replacement,"P.A. HUNMANTE AE (Transferred)"
+Unit 7,Drum Level Desk,VACANT POSITION,VACANCY,Immediate Deployment,P.A. HUNMANTE AE (Transferred)
 Unit 7,Drum Level Desk,R.A. PETHE DY.EE,Active,,R.A. PETHE DY.EE
 Unit 7,Drum Level Desk,A.J. PATTANKUDE DY.EE,Active,,A.J. PATTANKUDE DY.EE
 Unit 7,Drum Level Desk,S.S. KOHALE DY.EE,Active,,S.S. KOHALE DY.EE
@@ -58,15 +58,15 @@ Unit 8,Drum Level Desk,Pawan Rokde,Active,,Pawan Rokde
 Unit 8,Drum Level Desk,Balaji Kangaonkar,Active,,Balaji Kangaonkar
 Unit 8,Drum Level Desk,Sontakke Sunil,Active,,Sontakke Sunil
 Unit 8,Drum Level Desk,Salegaokar S.,Active,,Salegaokar S.
-Unit 8,Drum Level Desk,"Sandeep Gaikwad (Add.E.E.)",Active,,"Sandeep Gaikwad (Add.E.E.)"
+Unit 8,Drum Level Desk,Sandeep Gaikwad (Add.E.E.),Active,,Sandeep Gaikwad (Add.E.E.)
 Unit 6,Boiler API (BAPI),K.R. JADHAV AE,Active,,K.R. JADHAV AE
 Unit 6,Boiler API (BAPI),G.B. AKOLE AE,Active,,G.B. AKOLE AE
 Unit 6,Boiler API (BAPI),S.S. PATIL JE,Active,,S.S. PATIL JE
 Unit 6,Boiler API (BAPI),M. SIDIQUI JE,Active,,M. SIDIQUI JE
-Unit 7,Boiler API (BAPI),"S M Lute(Transferred)",Transferred,Verify Replacement,"S M Lute(Transferred)"
+Unit 7,Boiler API (BAPI),S M Lute(Transferred),Transferred,Verify Replacement,S M Lute(Transferred)
 Unit 7,Boiler API (BAPI),S.E.Gitte,Active,,S.E.Gitte
 Unit 7,Boiler API (BAPI),N K Jadhav,Active,,N K Jadhav
-Unit 7,Boiler API (BAPI),VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
+Unit 7,Boiler API (BAPI),P.A Hanumante,Transferred,,⚠️ VACANT
 Unit 8,Boiler API (BAPI),S S Padkantwar,Active,,S S Padkantwar
 Unit 8,Boiler API (BAPI),C R Guddewadi,Active,,C R Guddewadi
 Unit 8,Boiler API (BAPI),K S Dhopte,Active,,K S Dhopte
