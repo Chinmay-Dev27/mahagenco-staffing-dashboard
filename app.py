@@ -25,108 +25,111 @@ def check_password():
         st.session_state['authenticated'] = False
     
     if not st.session_state['authenticated']:
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("🔐 Admin Access")
-        pwd = st.sidebar.text_input("Password", type="password")
-        if pwd == "admin123":
-            st.session_state['authenticated'] = True
-            st.rerun()
+        with st.sidebar.expander("🔐 Admin Login"):
+            pwd = st.text_input("Password", type="password")
+            if pwd == "admin123":
+                st.session_state['authenticated'] = True
+                st.rerun()
         return False
     return True
 
-# --- 3. MAIN APP ---
-st.title("🏭 Plant Staffing Roster")
+# --- 3. MAIN DASHBOARD ---
+st.title("🏭 Plant Manpower Dashboard")
 
 df = load_data()
 
 if df.empty:
     st.error("No data found. Please upload the CSV file.")
 else:
-    # --- SIDEBAR FILTERS (The "See Whatever You Want" part) ---
-    st.sidebar.header("🔍 Filter Data")
-    
-    # 1. Unit Filter
-    all_units = sorted(df['Unit'].unique())
-    selected_units = st.sidebar.multiselect("Select Unit(s)", all_units, default=all_units)
-    
-    # 2. Desk Filter
-    all_desks = sorted(df['Desk'].unique())
-    selected_desks = st.sidebar.multiselect("Select Desk(s)", all_desks, default=all_desks)
-    
-    # 3. Name Search
-    search_query = st.sidebar.text_input("👤 Search by Staff Name")
+    # --- SECTION 1: HEATMAP OVERVIEW ---
+    st.subheader("1. Operational Heatmap")
+    st.caption("Overview of all Units and Desks. Red = Vacancy, Orange = Risk, Green = OK.")
 
-    # --- APPLY FILTERS ---
+    # Create a Pivot Table for the Heatmap
+    # Map status to color codes for conditional formatting
+    def color_map(val):
+        if val == 'VACANCY': return 'background-color: #ef4444; color: white; font-weight: bold; text-align: center'
+        if 'Risk' in val: return 'background-color: #f97316; color: white; font-weight: bold; text-align: center'
+        return 'background-color: #10b981; color: white; text-align: center'
+
+    pivot_df = df.pivot(index='Desk', columns='Unit', values='Status')
+    
+    # Sort Rows (Desks) in logical order
+    desk_order = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
+                  'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
+    pivot_df = pivot_df.reindex(desk_order)
+
+    # Display Heatmap Table
+    st.dataframe(pivot_df.style.applymap(color_map), use_container_width=True)
+
+    # --- SECTION 2: SEARCH & DETAILS ---
+    st.markdown("---")
+    st.subheader("2. Staff Details & Search")
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.info("👇 **Filter the list:**")
+        # Filters
+        all_units = sorted(df['Unit'].unique())
+        sel_unit = st.selectbox("Select Unit", ["All"] + all_units)
+        
+        all_desks = sorted(df['Desk'].unique())
+        sel_desk = st.selectbox("Select Desk", ["All"] + all_desks)
+        
+        search_txt = st.text_input("🔍 Search by Name")
+
+    # Apply Filters
     filtered_df = df.copy()
-    
-    # Filter by Unit
-    if selected_units:
-        filtered_df = filtered_df[filtered_df['Unit'].isin(selected_units)]
+    if sel_unit != "All":
+        filtered_df = filtered_df[filtered_df['Unit'] == sel_unit]
+    if sel_desk != "All":
+        filtered_df = filtered_df[filtered_df['Desk'] == sel_desk]
+    if search_txt:
+        filtered_df = filtered_df[filtered_df['Staff_Details'].str.contains(search_txt, case=False)]
+
+    with col2:
+        # Display Results
+        st.write(f"Showing **{len(filtered_df)}** records:")
         
-    # Filter by Desk
-    if selected_desks:
-        filtered_df = filtered_df[filtered_df['Desk'].isin(selected_desks)]
-        
-    # Filter by Search Text
-    if search_query:
-        # Search in Staff Details (Case insensitive)
-        filtered_df = filtered_df[filtered_df['Staff_Details'].str.contains(search_query, case=False, na=False)]
+        def highlight_row(row):
+            # Highlight the Status cell
+            res = [''] * len(row)
+            if row['Status'] == 'VACANCY':
+                res[2] = 'background-color: #fca5a5; color: #7f1d1d; font-weight: bold'
+            elif 'Risk' in row['Status']:
+                res[2] = 'background-color: #fdba74; color: #9a3412; font-weight: bold'
+            return res
 
-    # --- DISPLAY METRICS ---
-    # Show quick counts based on the filtered view
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Positions Shown", len(filtered_df))
-    vacancies = len(filtered_df[filtered_df['Status'] == 'VACANCY'])
-    c2.metric("Vacancies", vacancies, delta_color="inverse")
-    risks = len(filtered_df[filtered_df['Status'].str.contains('Risk')])
-    c3.metric("Transfer Risks", risks, delta_color="inverse")
-
-    # --- MAIN DATA TABLE ---
-    st.markdown("### 📋 Staff Details List")
-    
-    def highlight_status(val):
-        color = ''
-        if val == 'VACANCY':
-            color = 'background-color: #fca5a5; color: #7f1d1d; font-weight: bold' # Red
-        elif 'Risk' in val:
-            color = 'background-color: #fdba74; color: #9a3412; font-weight: bold' # Orange
-        elif 'OK' in val:
-            color = 'background-color: #86efac; color: #14532d' # Green
-        return color
-
-    st.dataframe(
-        filtered_df.style.applymap(highlight_status, subset=['Status']),
-        use_container_width=True,
-        height=600,
-        column_config={
-            "Unit": st.column_config.TextColumn("Unit", width="small"),
-            "Desk": st.column_config.TextColumn("Desk", width="medium"),
-            "Status": st.column_config.TextColumn("Status", width="small"),
-            "Staff_Details": st.column_config.TextColumn("Staff Names / Remarks", width="large"),
-        }
-    )
+        st.dataframe(
+            filtered_df.style.apply(highlight_row, axis=1),
+            use_container_width=True,
+            height=400,
+            column_config={
+                "Staff_Details": st.column_config.TextColumn("Staff List / Remarks", width="large"),
+                "Status": st.column_config.TextColumn("Current Status", width="small")
+            }
+        )
 
 # --- 4. ADMIN SECTION ---
 st.markdown("---")
-with st.expander("🛠️ Admin Tools (Edit Data)"):
-    if check_password():
-        st.write("Update the master database below:")
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            u_in = st.selectbox("Unit", df['Unit'].unique())
-            d_in = st.selectbox("Desk", df['Desk'].unique())
-        with c2:
-            s_in = st.selectbox("Status", ["OK", "VACANCY", "Risk (Transfer)"])
-            n_in = st.text_area("Staff Details")
-            
-        if st.button("Save Changes"):
-            mask = (df['Unit'] == u_in) & (df['Desk'] == d_in)
-            if mask.any():
-                df.loc[mask, 'Status'] = s_in
-                df.loc[mask, 'Staff_Details'] = n_in
-                save_data(df)
-                st.success("✅ Database Updated!")
-                st.rerun()
-            else:
-                st.error("Error: Selection not found in database.")
+if check_password():
+    st.subheader("🛠️ Admin: Update Data")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        u_in = st.selectbox("Unit", df['Unit'].unique(), key="u_adm")
+    with c2:
+        d_in = st.selectbox("Desk", df['Desk'].unique(), key="d_adm")
+    with c3:
+        s_in = st.selectbox("New Status", ["OK", "VACANCY", "Risk (Transfer)"], key="s_adm")
+    
+    n_in = st.text_area("Update Staff Details", key="n_adm")
+    
+    if st.button("Save Changes"):
+        mask = (df['Unit'] == u_in) & (df['Desk'] == d_in)
+        if mask.any():
+            df.loc[mask, 'Status'] = s_in
+            df.loc[mask, 'Staff_Details'] = n_in
+            save_data(df)
+            st.success("Updated!")
+            st.rerun()
