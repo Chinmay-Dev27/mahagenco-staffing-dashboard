@@ -9,11 +9,11 @@ Unit 7,Shift In-Charge,J.S. DUMNE EE,Active,,Common Pool
 Unit 7,Shift In-Charge,R.V. BHALE EE,Active,,Common Pool
 Unit 7,Shift In-Charge,S.B. PADOLE EE,Active,,Common Pool
 Unit 7,Shift In-Charge,P.S. DAGDE EE,Active,,Common Pool
-Unit 6,PCR In-Charge,A.M. PARVAT Ad.EE,Transferred,Need Replacement,A.M. PARVAT Ad.EE
+Unit 6,PCR In-Charge,A.M. PARVAT Ad.EE,Transferred,Staffing Action Required,A.M. PARVAT Ad.EE
 Unit 6,PCR In-Charge,B.G. MESHRAM Ad.EE,Active,,B.G. MESHRAM Ad.EE
 Unit 6,PCR In-Charge,A.B. CHAPTE Ad.EE,Active,,A.B. CHAPTE Ad.EE
-Unit 6,PCR In-Charge,S.P. KALE ADD.E.E.,Active,,S.P. KALE ADD.E.E.
-Unit 6,PCR In-Charge,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
+Unit 6,PCR In-Charge,S.P. KALE Add EE,Active,,S.P. KALE ADD.E.E.
+Unit 6,PCR In-Charge,VACANT POSITION,VACANCY,Manpower Shortage,⚠️ VACANT
 Unit 7,PCR In-Charge,S.K. MUDE Add.EE,Active,,S.K. MUDE Add.EE
 Unit 7,PCR In-Charge,V.A. NAIKWADE Add.EE,Active,,V.A. NAIKWADE Add.EE
 Unit 7,PCR In-Charge,T.D. PATIL DY.EE,Active,,T.D. PATIL DY.EE
@@ -43,12 +43,12 @@ Unit 6,Turbine Control Desk,P.S. PAL DY.EE,Active,,P.S. PAL DY.EE
 Unit 6,Turbine Control Desk,N.P. CHAVAN AE,Active,,N.P. CHAVAN AE
 Unit 6,Turbine Control Desk,S.S. SANGLE DY.EE,Active,,S.S. SANGLE DY.EE
 Unit 6,Turbine Control Desk,C.K. APRE DY.EE,Active,,C.K. APRE DY.EE
-Unit 6,Turbine Control Desk,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
+Unit 6,Turbine Control Desk,VACANT POSITION,VACANCY,Manpower Shortage,⚠️ VACANT
 Unit 7,Turbine Control Desk,S.S. RANE,Active,,S.S. RANE
 Unit 7,Turbine Control Desk,J.S. MATALE,Active,,J.S. MATALE
 Unit 7,Turbine Control Desk,S.S. KAPAWAR,Active,,S.S. KAPAWAR
-Unit 7,Turbine Control Desk,P.G. PANCHAL (Transferred),Transferred,Need Replacement,P.G. PANCHAL (Transferred)
-Unit 7,Turbine Control Desk,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
+Unit 7,Turbine Control Desk,P.G. PANCHAL (Transferred),Transferred,Staffing Action Required,P.G. PANCHAL (Transferred)
+Unit 7,Turbine Control Desk,VACANT POSITION,VACANCY,Manpower Shortage,⚠️ VACANT
 Unit 8,Turbine Control Desk,N.Giripunje,Active,,N.Giripunje
 Unit 8,Turbine Control Desk,Prayag Mangesh,Active,,Prayag Mangesh
 Unit 8,Turbine Control Desk,Bhaskar Tarse,Active,,Bhaskar Tarse
@@ -58,8 +58,8 @@ Unit 6,Drum Level Desk,S.S. INGLE DY.EE,Active,,S.S. INGLE DY.EE
 Unit 6,Drum Level Desk,J.S. SURYAWANSHI AE (Transferred),Transferred,Verify Replacement,J.S. SURYAWANSHI AE (Transferred)
 Unit 6,Drum Level Desk,S.R. INGALE DY.EE,Active,,S.R. INGALE DY.EE
 Unit 6,Drum Level Desk,S.G. PAWAR AE,Active,,S.G. PAWAR AE
-Unit 6,Drum Level Desk,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
-Unit 7,Drum Level Desk,VACANT POSITION,VACANCY,Immediate Deployment,P.A. HUNMANTE Moved to BAPI
+Unit 6,Drum Level Desk,VACANT POSITION,VACANCY,Manpower Shortage,⚠️ VACANT
+Unit 7,Drum Level Desk,VACANT POSITION,VACANCY,Manpower Shortage,P.A. HUNMANTE Moved to BAPI
 Unit 7,Drum Level Desk,R.A. PETHE DY.EE,Active,,R.A. PETHE DY.EE
 Unit 7,Drum Level Desk,A.J. PATTANKUDE DY.EE,Active,,A.J. PATTANKUDE DY.EE
 Unit 7,Drum Level Desk,S.S. KOHALE DY.EE,Active,,S.S. KOHALE DY.EE
