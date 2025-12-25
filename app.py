@@ -9,7 +9,7 @@ import io
 st.set_page_config(page_title="Mahagenco Parli Ops", page_icon="⚡", layout="wide")
 DATA_FILE = 'stitched_staffing_data.csv'
 
-# ⚠️ UPDATE REPO
+# ⚠️ UPDATE REPO - Ensure this matches your GitHub username/repo
 REPO_NAME = "Chinmay-Dev27/mahagenco-staffing-dashboard"
 
 # --- CUSTOM CSS ---
@@ -36,7 +36,7 @@ st.markdown("""
         margin-top: 10px; 
         padding: 10px; 
         background-color: #f0f2f6; 
-        color: #000000;
+        color: #000000; /* Black text for visibility */
         border-radius: 5px;
         border: 1px solid #ccc;
     }
@@ -67,12 +67,13 @@ def load_data():
         df['Status'] = df['Status'].astype(str)
         df['Staff_Name'] = df['Staff_Name'].astype(str)
         
-        # --- AUTO-UPDATE OLD TERMINOLOGY ---
-        # Map old phrases to new polite ones dynamically for display/saving
-        df['Action_Required'] = df['Action_Required'].replace({
-            'Immediate Deployment': 'Manpower Shortage',
-            'Need Replacement': 'Staffing Action Required'
-        })
+        # --- AUTO-UPDATE TERMINOLOGY (Polite & Official) ---
+        # This replaces old terms with new ones automatically
+        if 'Action_Required' in df.columns:
+            df['Action_Required'] = df['Action_Required'].replace({
+                'Immediate Deployment': 'Manpower Shortage',
+                'Need Replacement': 'Staffing Action Required'
+            })
         return df
     except FileNotFoundError:
         return pd.DataFrame()
@@ -120,7 +121,7 @@ with tab_home:
     else:
         op_df = df[df['Desk'] != 'Shift In-Charge']
 
-        # --- 1. PIE CHARTS & METRICS ---
+        # --- 1. CHARTS & METRICS ---
         c_chart1, c_chart2, c_metrics = st.columns([1, 1, 1.5])
 
         with c_chart1:
@@ -131,19 +132,20 @@ with tab_home:
                           color='Status',
                           color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96'},
                           hole=0.4)
-            fig1.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=0, b=0, l=0, r=0), height=200)
+            fig1.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2), margin=dict(t=0, b=0, l=0, r=0), height=200)
             st.plotly_chart(fig1, use_container_width=True)
 
         with c_chart2:
-            st.markdown("##### ⚠️ Total Gaps (Vacant + Transferred)")
+            st.markdown("##### ⚠️ Gaps by Unit (Vacancy + Transfer)")
             # Filter for both VACANCY and Transferred
             gaps_df = op_df[op_df['Status'].isin(['VACANCY', 'Transferred'])]
             
             if not gaps_df.empty:
-                gap_counts = gaps_df['Unit'].value_counts().reset_index()
-                gap_counts.columns = ['Unit', 'Count']
-                fig2 = px.pie(gap_counts, values='Count', names='Unit', hole=0.4, color_discrete_sequence=px.colors.sequential.RdBu)
-                fig2.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=0, b=0, l=0, r=0), height=200)
+                # SUNBURST CHART: Shows Unit -> Then splits into Vacancy/Transfer
+                fig2 = px.sunburst(gaps_df, path=['Unit', 'Status'], 
+                                   color='Status',
+                                   color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421'})
+                fig2.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=200)
                 st.plotly_chart(fig2, use_container_width=True)
             else:
                 st.success("No Manpower Gaps!")
@@ -151,7 +153,7 @@ with tab_home:
         with c_metrics:
             st.markdown("##### Key Metrics")
             m1, m2 = st.columns(2)
-            m1.metric("🚨 Vacancies", len(op_df[op_df['Status'] == 'VACANCY']), delta_color="inverse")
+            m1.metric("🚨 Shortage", len(op_df[op_df['Status'] == 'VACANCY']), delta_color="inverse")
             m2.metric("🟠 Transferred", len(op_df[op_df['Status'] == 'Transferred']), delta_color="inverse")
             st.metric("✅ Total Active Staff", len(op_df[op_df['Status'] == 'Active']))
 
@@ -162,6 +164,7 @@ with tab_home:
         ee_data = df[df['Desk'] == 'Shift In-Charge']
         if not ee_data.empty:
             ee_names = ee_data['Staff_Name'].unique()
+            # Clean 'EE' from display name
             clean_ee_names = [re.sub(r'\s*EE\b', '', name, flags=re.IGNORECASE).strip() for name in ee_names]
             cols = st.columns(len(clean_ee_names))
             for i, name in enumerate(clean_ee_names):
@@ -205,7 +208,7 @@ with tab_home:
         st.markdown("""
         <div class="legend-box">
             <strong>Legend:</strong>&nbsp;&nbsp;
-            <span class="badge-vacant">🔴 RED</span> = Position is currently <strong>VACANT</strong> (Manpower Shortage).&nbsp;&nbsp;
+            <span class="badge-vacant">🔴 RED</span> = Position is <strong>VACANT</strong> (Manpower Shortage).&nbsp;&nbsp;
             <span class="badge-transfer">🟠 ORANGE</span> = Staff marked as <strong>TRANSFERRED</strong> (Staffing Action Required).&nbsp;&nbsp;
             <span class="badge-active">🟢 GREEN</span> = Active / Deployed.
         </div>
@@ -291,14 +294,14 @@ with tab_admin:
     if pwd == "admin123":
         st.success("Access Granted")
         
-        # ADDED NEW OPTION: "✏️ Update Staff Designation"
+        # --- NEW: UPDATE DESIGNATION ADDED TO LIST ---
         action_type = st.radio("Choose Action:", 
             ["🔄 Transfer Staff (Desk to Desk)", "✏️ Change Status (Transferred/Vacancy)", "📝 Update Designation & Name", "➕ Add New Staff"], 
             horizontal=True
         )
         st.divider()
 
-        # --- OPTION: UPDATE DESIGNATION & NAME ---
+        # --- OPTION: UPDATE DESIGNATION & NAME (NEW FEATURE) ---
         if action_type == "📝 Update Designation & Name":
             st.info("Update employee name and assign official designation.")
             
@@ -312,7 +315,7 @@ with tab_admin:
                 target_staff = st.selectbox("Select Staff Member", staff_rows['Staff_Name'].unique())
                 idx = df[(df['Unit'] == unit_sel) & (df['Desk'] == desk_sel) & (df['Staff_Name'] == target_staff)].index[0]
                 
-                # Split current name to guess value if possible, else just use full name
+                # Pre-fill current name
                 current_full_name = df.at[idx, 'Staff_Name']
                 
                 ec1, ec2 = st.columns([2, 1])
@@ -323,7 +326,6 @@ with tab_admin:
                 
                 if st.button("Update Details"):
                     if new_desg != "-- Select --":
-                        # Create short suffix map
                         desg_map = {
                             "Junior Engineer (JE)": "JE",
                             "Assistant Engineer (AE)": "AE",
@@ -332,7 +334,9 @@ with tab_admin:
                             "Executive Engineer (EE)": "EE"
                         }
                         suffix = desg_map[new_desg]
-                        final_name = f"{new_name_input} {suffix}"
+                        # Remove old suffix if it exists to avoid double (e.g. Name AE AE)
+                        base_name = re.sub(r'\s+(JE|AE|DyEE|Add EE|EE|Add.EE|Ad.EE)\b', '', new_name_input, flags=re.IGNORECASE).strip()
+                        final_name = f"{base_name} {suffix}"
                     else:
                         final_name = new_name_input
                     
@@ -360,7 +364,7 @@ with tab_admin:
                     df.at[idx, 'Status'] = new_status
                     if new_status == "VACANCY":
                         df.at[idx, 'Staff_Name'] = "VACANT POSITION"
-                        df.at[idx, 'Action_Required'] = "Manpower Shortage" # Updated Phrase
+                        df.at[idx, 'Action_Required'] = "Manpower Shortage"
                     
                     save_local(df)
                     if update_github(df):
@@ -400,7 +404,7 @@ with tab_admin:
                 if old_seat_opt == "Mark VACANT":
                     df.at[src_idx, 'Staff_Name'] = "VACANT POSITION"
                     df.at[src_idx, 'Status'] = "VACANCY"
-                    df.at[src_idx, 'Action_Required'] = "Manpower Shortage" # Updated Phrase
+                    df.at[src_idx, 'Action_Required'] = "Manpower Shortage"
                 
                 save_local(df)
                 if update_github(df):
