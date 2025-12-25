@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import re
 from github import Github
 import io
@@ -22,13 +23,16 @@ st.markdown("""
         text-align: center;
     }
     .badge-vacant {
-        background-color: #ff4b4b; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.9em; display: inline-block; margin-bottom: 2px;
+        background-color: #ff4b4b; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; display: inline-block; margin-bottom: 2px;
     }
     .badge-transfer {
-        background-color: #ffa421; color: black; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.9em; display: inline-block; margin-bottom: 2px;
+        background-color: #ffa421; color: black; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; display: inline-block; margin-bottom: 2px;
     }
     .badge-active {
-        background-color: #e6fffa; color: #047857; border: 1px solid #047857; padding: 4px 8px; border-radius: 4px; font-weight: 500; font-size: 0.9em; display: inline-block; margin-bottom: 2px;
+        background-color: #e6fffa; color: #047857; border: 1px solid #047857; padding: 4px 8px; border-radius: 4px; font-weight: 500; font-size: 0.85em; display: inline-block; margin-bottom: 2px;
+    }
+    .legend-box {
+        font-size: 0.9em; margin-top: 10px; padding: 10px; background-color: #f0f2f6; border-radius: 5px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -92,7 +96,6 @@ with st.sidebar:
 st.title("⚡ Operation Staff Dashboard")
 st.markdown(f"**Units:** 6, 7 & 8 | **Last Updated:** {pd.Timestamp.now().strftime('%d-%b-%Y')}")
 
-# ADDED SEARCH TAB BACK
 tab_home, tab_search, tab_admin = st.tabs(["📊 Overview & Roster", "🔍 Search & Reports", "🛠️ Admin Actions"])
 
 # ==========================================
@@ -102,38 +105,61 @@ with tab_home:
     if df.empty:
         st.warning("⚠️ No data loaded.")
     else:
-        # --- METRICS ROW ---
         op_df = df[df['Desk'] != 'Shift In-Charge']
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("🚨 Critical Vacancies", len(op_df[op_df['Status'] == 'VACANCY']), delta_color="inverse")
-        c2.metric("🟠 Transfers/Risks", len(op_df[op_df['Status'] == 'Transferred']), delta_color="inverse")
-        c3.metric("✅ Active Staff", len(op_df[op_df['Status'] == 'Active']))
-        c4.metric("👥 Total Positions", len(op_df))
-        
+
+        # --- 1. PIE CHARTS & METRICS ---
+        c_chart1, c_chart2, c_metrics = st.columns([1, 1, 1.5])
+
+        with c_chart1:
+            st.markdown("##### 📊 Staff Status")
+            status_counts = op_df['Status'].value_counts().reset_index()
+            status_counts.columns = ['Status', 'Count']
+            fig1 = px.pie(status_counts, values='Count', names='Status', 
+                          color='Status',
+                          color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96'},
+                          hole=0.4)
+            fig1.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=150)
+            st.plotly_chart(fig1, use_container_width=True)
+
+        with c_chart2:
+            st.markdown("##### 🚨 Vacancy by Unit")
+            vac_by_unit = op_df[op_df['Status'] == 'VACANCY']['Unit'].value_counts().reset_index()
+            vac_by_unit.columns = ['Unit', 'Count']
+            if not vac_by_unit.empty:
+                fig2 = px.pie(vac_by_unit, values='Count', names='Unit', hole=0.4)
+                fig2.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=150)
+                st.plotly_chart(fig2, use_container_width=True)
+            else:
+                st.success("No Vacancies!")
+
+        with c_metrics:
+            st.markdown("##### Key Metrics")
+            m1, m2 = st.columns(2)
+            m1.metric("🚨 Vacancies", len(op_df[op_df['Status'] == 'VACANCY']), delta_color="inverse")
+            m2.metric("🟠 Transferred", len(op_df[op_df['Status'] == 'Transferred']), delta_color="inverse")
+            st.metric("✅ Total Active Staff", len(op_df[op_df['Status'] == 'Active']))
+
         st.divider()
 
-        # --- SHIFT IN CHARGE (HEADER) ---
+        # --- 2. SHIFT IN CHARGE ---
         st.markdown("### 👨‍✈️ Shift In-Charge (EE)")
         ee_data = df[df['Desk'] == 'Shift In-Charge']
         if not ee_data.empty:
             ee_names = ee_data['Staff_Name'].unique()
-            # Clean 'EE' from display name
             clean_ee_names = [re.sub(r'\s*EE\b', '', name, flags=re.IGNORECASE).strip() for name in ee_names]
-            
             cols = st.columns(len(clean_ee_names))
             for i, name in enumerate(clean_ee_names):
                 cols[i].info(f"**{name}**")
         else:
             st.info("No Shift In-Charge data found.")
 
-        # --- TRANSPOSED MASTER TABLE ---
+        # --- 3. MAIN TABLE ---
         st.subheader("🏭 Unit Status Map")
         
         def agg_staff(x):
             staff_list = []
             for _, row in x.iterrows():
                 raw_name = row['Staff_Name']
-                # IMPROVED CLEANING: Regex to remove (Transferred), (Trf), etc case-insensitive
                 display_name = re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', raw_name, flags=re.IGNORECASE).strip()
 
                 if row['Status'] == 'VACANCY': 
@@ -142,13 +168,10 @@ with tab_home:
                     staff_list.append(f'<div class="badge-transfer">🟠 {display_name}</div>')
                 else:
                     staff_list.append(f'<div class="badge-active">👤 {display_name}</div>')
-            
             return "".join(staff_list)
 
-        desks_order = [
-            'PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
-            'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)'
-        ]
+        desks_order = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
+                       'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
         
         units = sorted(op_df['Unit'].unique())
         table_data = []
@@ -157,17 +180,46 @@ with tab_home:
             row_data = {"Desk": f"<b>{desk}</b>"}
             for unit in units:
                 matches = op_df[(op_df['Unit'] == unit) & (op_df['Desk'] == desk)]
-                if matches.empty:
-                    row_data[unit] = "-"
-                else:
-                    row_data[unit] = agg_staff(matches)
+                row_data[unit] = "-" if matches.empty else agg_staff(matches)
             table_data.append(row_data)
         
-        display_df = pd.DataFrame(table_data)
-        st.write(display_df.to_html(escape=False, index=False, classes="table table-bordered table-striped"), unsafe_allow_html=True)
+        st.write(pd.DataFrame(table_data).to_html(escape=False, index=False, classes="table table-bordered table-striped"), unsafe_allow_html=True)
+
+        # --- 4. LEGEND ---
+        st.markdown("""
+        <div class="legend-box">
+            <strong>Legend:</strong>&nbsp;&nbsp;
+            <span class="badge-vacant">🔴 RED</span> = Position is currently <strong>VACANT</strong> (Needs Immediate Replacement).&nbsp;&nbsp;
+            <span class="badge-transfer">🟠 ORANGE</span> = Staff marked as <strong>TRANSFERRED</strong> (Risk / Leaving soon).&nbsp;&nbsp;
+            <span class="badge-active">🟢 GREEN</span> = Active / Deployed.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.divider()
+
+        # --- 5. DETAILED LISTS (VACANCY & TRANSFERRED) ---
+        c_list1, c_list2 = st.columns(2)
+        
+        with c_list1:
+            st.subheader("🚨 Vacancy List")
+            vac_list = op_df[op_df['Status'] == 'VACANCY'][['Unit', 'Desk', 'Action_Required']]
+            if not vac_list.empty:
+                st.dataframe(vac_list, use_container_width=True, hide_index=True)
+            else:
+                st.success("No active vacancies.")
+
+        with c_list2:
+            st.subheader("🟠 Transferred Employees")
+            trf_list = op_df[op_df['Status'] == 'Transferred'][['Unit', 'Desk', 'Staff_Name']]
+            # Clean names for this table too
+            if not trf_list.empty:
+                trf_list['Staff_Name'] = trf_list['Staff_Name'].apply(lambda x: re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', x, flags=re.IGNORECASE).strip())
+                st.dataframe(trf_list, use_container_width=True, hide_index=True)
+            else:
+                st.success("No transferred staff pending.")
 
 # ==========================================
-# TAB 2: SEARCH & REPORTS (RESTORED)
+# TAB 2: SEARCH & REPORTS
 # ==========================================
 with tab_search:
     st.header("🔍 Unit & Desk Analysis")
@@ -182,19 +234,15 @@ with tab_search:
             sel_desk = st.selectbox("Select Desk (Operation Area)", d_sort)
 
         st.markdown("---")
-        
         subset = df[(df['Unit'] == sel_unit) & (df['Desk'] == sel_desk)]
         
         if subset.empty:
             st.info("No records found.")
         else:
             st.markdown(f"#### 👥 Staff Roster: {sel_unit} - {sel_desk}")
-            
-            # Use same display logic (badges) for consistency
             for _, row in subset.iterrows():
                 raw_name = row['Staff_Name']
                 clean_name = re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', raw_name, flags=re.IGNORECASE).strip()
-                
                 if row['Status'] == 'VACANCY':
                     st.error(f"🔴 **VACANT POSITION** (Action: {row['Action_Required']})")
                 elif row['Status'] == 'Transferred':
@@ -213,7 +261,6 @@ with tab_admin:
 
     if pwd == "admin123":
         st.success("Access Granted")
-        
         action_type = st.radio("Choose Action:", 
             ["🔄 Transfer Staff (Desk to Desk)", "✏️ Change Status (Mark Transferred/Active)", "➕ Add New Staff"], 
             horizontal=True
@@ -230,7 +277,6 @@ with tab_admin:
             if not staff_rows.empty:
                 target_staff = st.selectbox("Select Staff Member", staff_rows['Staff_Name'].unique())
                 idx = df[(df['Unit'] == unit_sel) & (df['Desk'] == desk_sel) & (df['Staff_Name'] == target_staff)].index[0]
-                
                 new_status = st.selectbox("New Status", ["Active", "Transferred", "VACANCY", "Long Leave"])
                 
                 if st.button("Update Status"):
@@ -238,13 +284,12 @@ with tab_admin:
                     if new_status == "VACANCY":
                         df.at[idx, 'Staff_Name'] = "VACANT POSITION"
                         df.at[idx, 'Action_Required'] = "Immediate Deployment"
-                    
                     save_local(df)
                     if update_github(df):
                         st.success(f"Updated {target_staff} to {new_status}")
                         st.rerun()
 
-        # --- OPTION 2: PHYSICAL TRANSFER ---
+        # --- OPTION 2: TRANSFER ---
         elif action_type == "🔄 Transfer Staff (Desk to Desk)":
             col1, col2 = st.columns(2)
             with col1:
@@ -252,11 +297,7 @@ with tab_admin:
                 u1 = st.selectbox("From Unit", df['Unit'].unique(), key="u1")
                 d1 = st.selectbox("From Desk", df[df['Unit'] == u1]['Desk'].unique(), key="d1")
                 people = df[(df['Unit'] == u1) & (df['Desk'] == d1) & (df['Staff_Name'] != 'VACANT POSITION')]['Staff_Name'].unique()
-                if len(people) > 0:
-                    p1 = st.selectbox("Person", people)
-                else:
-                    p1 = None
-                    st.error("No staff here.")
+                p1 = st.selectbox("Person", people) if len(people) > 0 else None
                 
             with col2:
                 st.subheader("2. Where?")
@@ -288,7 +329,7 @@ with tab_admin:
                     st.success("Transfer Successful!")
                     st.rerun()
 
-        # --- OPTION 3: ADD NEW STAFF ---
+        # --- OPTION 3: ADD ---
         elif action_type == "➕ Add New Staff":
             c1, c2, c3 = st.columns(3)
             new_u = c1.selectbox("Unit", df['Unit'].unique())
@@ -305,7 +346,6 @@ with tab_admin:
                 else:
                     new_row = {"Unit": new_u, "Desk": new_d, "Staff_Name": new_n, "Status": "Active", "Action_Required": "", "Original_Line": ""}
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-                
                 save_local(df)
                 if update_github(df):
                     st.success("Added Successfully")
