@@ -82,7 +82,7 @@ def save_local(df):
     st.cache_data.clear()
 
 def format_staff_name(raw_name):
-    if "VACANT" in raw_name: return "VACANT POSITION"
+    if "VACANT" in raw_name: return "VACANT"
     clean = re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', raw_name, flags=re.IGNORECASE).strip()
     pattern = r'\s+(JE|AE|DY\.? ?EE|ADD\.? ?EE|AD\.? ?EE|EE)\b'
     match = re.search(pattern, clean, flags=re.IGNORECASE)
@@ -122,7 +122,7 @@ def create_chart_images(df):
         fig2.savefig(f2.name, format='png', dpi=100)
         return f1.name, f2.name
 
-# --- PDF REPORT GENERATION (Refined Text & Colors) ---
+# --- PDF REPORT GENERATION (Clean & Professional) ---
 def generate_pdf_report(df):
     pdf = PDF()
     pdf.add_page()
@@ -161,7 +161,7 @@ def generate_pdf_report(df):
     pdf.set_font("Arial", 'B', 12)
     pdf.cell(0, 10, "Operational Roster", 0, 1, 'L')
     
-    # Header
+    # Table Header
     pdf.set_font("Arial", 'B', 9)
     pdf.set_fill_color(50, 50, 50)
     pdf.set_text_color(255, 255, 255)
@@ -173,7 +173,7 @@ def generate_pdf_report(df):
         pdf.cell(w_unit, 8, str(u), 1, 0, 'C', 1)
     pdf.ln()
     
-    # Body
+    # Table Body
     pdf.set_text_color(0, 0, 0)
     desks_order = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
                    'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
@@ -195,12 +195,11 @@ def generate_pdf_report(df):
                     nm = format_staff_name(r['Staff_Name'])
                     st_flag = ""
                     if r['Status'] == 'VACANCY': 
-                        # Use nicer text instead of repetition
-                        nm = "VACANT POSITION"
-                        st_flag = " [Manpower Shortage]" 
+                        # REMOVED LONG TEXT - Just "VACANT"
+                        nm = "VACANT"
                         has_vacant = True
                     elif r['Status'] == 'Transferred': 
-                        st_flag = " [Transfer Risk]"
+                        st_flag = " [TRF]"
                         has_transfer = True
                     staff_list.append(f"{nm}{st_flag}")
                 txt = "\n".join(staff_list)
@@ -224,34 +223,53 @@ def generate_pdf_report(df):
         # Draw Units with Color
         for u in units:
             d = row_data[u]
+            
+            # COLOR LOGIC (PASTEL BACKGROUNDS)
+            bar_color = None
             if d['vacant']:
-                pdf.set_fill_color(255, 235, 235) # Pastel Red BG
-                pdf.set_text_color(180, 0, 0)     # Dark Red Text
-                pdf.set_font("Arial", 'B', 8)     # Bold
+                pdf.set_fill_color(255, 235, 235) # Pastel Red
+                bar_color = (220, 50, 50)         # Red Bar
             elif d['transfer']:
-                pdf.set_fill_color(255, 245, 220) # Pastel Orange BG
-                pdf.set_text_color(200, 100, 0)   # Dark Orange Text
-                pdf.set_font("Arial", 'I', 8)     # Italic
+                pdf.set_fill_color(255, 245, 220) # Pastel Orange
+                bar_color = (255, 165, 0)         # Orange Bar
             else:
                 pdf.set_fill_color(255, 255, 255) # White
-                pdf.set_text_color(0, 0, 0)       # Black
-                pdf.set_font("Arial", '', 8)      # Normal
+                bar_color = None
+            
+            # Set Text Black for readability
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("Arial", '', 8)
                 
             x_curr = pdf.get_x()
             y_curr = pdf.get_y()
+            
+            # Draw Cell
             pdf.multi_cell(w_unit, 5, d['text'], 1, 'L', 1)
+            
+            # DRAW STATUS BAR (THE "BULB" EFFECT)
+            if bar_color:
+                pdf.set_fill_color(*bar_color)
+                # Draw a small 2mm wide rectangle on the left edge of the cell
+                pdf.rect(x_curr, y_curr, 2, h, 'F') 
+            
             pdf.set_xy(x_curr + w_unit, y_curr)
             
         pdf.ln(h)
 
     # Footer Names
     pdf.ln(10)
-    pdf.set_text_color(0, 0, 0) # Ensure Black
+    pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", 'B', 9)
     pdf.cell(0, 6, "Shift In-Charge (EE):", 0, 1)
     pdf.set_font("Arial", '', 9)
     ee_names = [format_staff_name(x) for x in df[df['Desk']=='Shift In-Charge']['Staff_Name'].unique()]
     pdf.multi_cell(0, 5, ", ".join(ee_names))
+    
+    # LEGEND
+    pdf.ln(5)
+    pdf.set_font("Arial", 'I', 8)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 5, "Legend: Red Bar = Vacancy | Orange Bar = Transferred | [TRF] = Transferred Status", 0, 1)
 
     return pdf.output(dest='S').encode('latin-1')
 
