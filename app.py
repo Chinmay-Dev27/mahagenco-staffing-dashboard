@@ -32,7 +32,13 @@ st.markdown("""
         background-color: #e6fffa; color: #047857; border: 1px solid #047857; padding: 4px 8px; border-radius: 4px; font-weight: 500; font-size: 0.85em; display: inline-block; margin-bottom: 2px;
     }
     .legend-box {
-        font-size: 0.9em; margin-top: 10px; padding: 10px; background-color: #f0f2f6; border-radius: 5px;
+        font-size: 0.9em; 
+        margin-top: 10px; 
+        padding: 10px; 
+        background-color: #f0f2f6; 
+        color: #000000; /* Fixed Font Color */
+        border-radius: 5px;
+        border: 1px solid #ccc;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -118,7 +124,8 @@ with tab_home:
                           color='Status',
                           color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96'},
                           hole=0.4)
-            fig1.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=150)
+            # SHOW LEGEND = TRUE
+            fig1.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=0, b=0, l=0, r=0), height=200)
             st.plotly_chart(fig1, use_container_width=True)
 
         with c_chart2:
@@ -127,7 +134,8 @@ with tab_home:
             vac_by_unit.columns = ['Unit', 'Count']
             if not vac_by_unit.empty:
                 fig2 = px.pie(vac_by_unit, values='Count', names='Unit', hole=0.4)
-                fig2.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0), height=150)
+                # SHOW LEGEND = TRUE
+                fig2.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5), margin=dict(t=0, b=0, l=0, r=0), height=200)
                 st.plotly_chart(fig2, use_container_width=True)
             else:
                 st.success("No Vacancies!")
@@ -185,7 +193,7 @@ with tab_home:
         
         st.write(pd.DataFrame(table_data).to_html(escape=False, index=False, classes="table table-bordered table-striped"), unsafe_allow_html=True)
 
-        # --- 4. LEGEND ---
+        # --- 4. LEGEND (FIXED COLOR) ---
         st.markdown("""
         <div class="legend-box">
             <strong>Legend:</strong>&nbsp;&nbsp;
@@ -197,7 +205,7 @@ with tab_home:
         
         st.divider()
 
-        # --- 5. DETAILED LISTS (VACANCY & TRANSFERRED) ---
+        # --- 5. DETAILED LISTS ---
         c_list1, c_list2 = st.columns(2)
         
         with c_list1:
@@ -211,7 +219,6 @@ with tab_home:
         with c_list2:
             st.subheader("🟠 Transferred Employees")
             trf_list = op_df[op_df['Status'] == 'Transferred'][['Unit', 'Desk', 'Staff_Name']]
-            # Clean names for this table too
             if not trf_list.empty:
                 trf_list['Staff_Name'] = trf_list['Staff_Name'].apply(lambda x: re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', x, flags=re.IGNORECASE).strip())
                 st.dataframe(trf_list, use_container_width=True, hide_index=True)
@@ -219,7 +226,7 @@ with tab_home:
                 st.success("No transferred staff pending.")
 
 # ==========================================
-# TAB 2: SEARCH & REPORTS
+# TAB 2: SEARCH & REPORTS (UPDATED WITH CHARTS)
 # ==========================================
 with tab_search:
     st.header("🔍 Unit & Desk Analysis")
@@ -239,16 +246,31 @@ with tab_search:
         if subset.empty:
             st.info("No records found.")
         else:
-            st.markdown(f"#### 👥 Staff Roster: {sel_unit} - {sel_desk}")
-            for _, row in subset.iterrows():
-                raw_name = row['Staff_Name']
-                clean_name = re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', raw_name, flags=re.IGNORECASE).strip()
-                if row['Status'] == 'VACANCY':
-                    st.error(f"🔴 **VACANT POSITION** (Action: {row['Action_Required']})")
-                elif row['Status'] == 'Transferred':
-                    st.warning(f"🟠 **{clean_name}** - *Transferred*")
-                else:
-                    st.success(f"👤 **{clean_name}** - *Active*")
+            # --- ADDED PIE CHART FOR SEARCH ---
+            col_search_chart, col_search_list = st.columns([1, 2])
+            
+            with col_search_chart:
+                st.markdown("#### Status Breakdown")
+                search_counts = subset['Status'].value_counts().reset_index()
+                search_counts.columns = ['Status', 'Count']
+                fig_search = px.pie(search_counts, values='Count', names='Status', 
+                              color='Status',
+                              color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96'},
+                              hole=0.4)
+                fig_search.update_layout(showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=-0.2), margin=dict(t=0, b=0, l=0, r=0), height=200)
+                st.plotly_chart(fig_search, use_container_width=True)
+
+            with col_search_list:
+                st.markdown(f"#### 👥 Staff Roster: {sel_unit} - {sel_desk}")
+                for _, row in subset.iterrows():
+                    raw_name = row['Staff_Name']
+                    clean_name = re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', raw_name, flags=re.IGNORECASE).strip()
+                    if row['Status'] == 'VACANCY':
+                        st.error(f"🔴 **VACANT POSITION** (Action: {row['Action_Required']})")
+                    elif row['Status'] == 'Transferred':
+                        st.warning(f"🟠 **{clean_name}** - *Transferred*")
+                    else:
+                        st.success(f"👤 **{clean_name}** - *Active*")
 
 # ==========================================
 # TAB 3: ADMIN ACTIONS
