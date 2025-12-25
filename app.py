@@ -46,7 +46,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- SESSION STATE SETUP (Fixes Page Resets) ---
+# --- SESSION STATE ---
 if 'admin_logged_in' not in st.session_state:
     st.session_state.admin_logged_in = False
 
@@ -73,8 +73,6 @@ def load_data():
         df = pd.read_csv(DATA_FILE)
         df['Status'] = df['Status'].astype(str)
         df['Staff_Name'] = df['Staff_Name'].astype(str)
-        
-        # --- AUTO-UPDATE TERMINOLOGY ---
         if 'Action_Required' in df.columns:
             df['Action_Required'] = df['Action_Required'].replace({
                 'Immediate Deployment': 'Manpower Shortage',
@@ -90,19 +88,53 @@ def save_local(df):
 
 df = load_data()
 
+# --- HELPER: FORMAT NAME & DESIGNATION ---
+def format_staff_name(raw_name):
+    """
+    Cleans name and formats designation into parentheses ()
+    Ex: 'P.S. PAL DY.EE' -> 'P.S. PAL (DY.EE)'
+    """
+    if "VACANT" in raw_name:
+        return "VACANT"
+    
+    # 1. Remove status text like (Transferred)
+    clean = re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', raw_name, flags=re.IGNORECASE).strip()
+    
+    # 2. Identify Designation at end of string
+    # Patterns: JE, AE, DY.EE, DyEE, ADD.EE, Add EE, EE, etc.
+    # regex looks for space followed by designation at the end
+    pattern = r'\s+(JE|AE|DY\.? ?EE|ADD\.? ?EE|AD\.? ?EE|EE)\b'
+    
+    match = re.search(pattern, clean, flags=re.IGNORECASE)
+    if match:
+        desg = match.group(1) # The designation found
+        name_only = clean[:match.start()].strip() # The name part
+        return f"{name_only} ({desg})"
+    
+    return clean
+
 # --- SIDEBAR ---
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/en/thumb/8/82/Mahagenco_Logo.png/220px-Mahagenco_Logo.png", width=100)
     st.title("Parli TPS Ops")
     
     st.markdown("### 🔍 Global Search")
-    search_term = st.text_input("Find Staff Member", placeholder="Enter name...")
+    search_term = st.text_input("Find Staff Member", placeholder="Enter name (e.g., Pal, Patil)...")
+    
     if search_term and not df.empty:
+        # Search logic: partial match, case insensitive
         res = df[df['Staff_Name'].str.contains(search_term, case=False, na=False)]
+        
         if not res.empty:
             st.success(f"Found {len(res)} matches:")
             for _, r in res.iterrows():
-                st.markdown(f"**{r['Staff_Name']}**\n\n*{r['Unit']} - {r['Desk']}*")
+                formatted = format_staff_name(r['Staff_Name'])
+                st.markdown(f"""
+                <div style="background-color: #262730; padding: 10px; border-radius: 5px; margin-bottom: 5px; border: 1px solid #444;">
+                    <strong>{formatted}</strong><br>
+                    <span style="color: #bbb; font-size: 0.9em;">{r['Unit']} • {r['Desk']}</span>
+                </div>
+                """, unsafe_allow_html=True)
         else:
             st.warning("No match found.")
 
@@ -127,7 +159,7 @@ with tab_home:
     else:
         op_df = df[df['Desk'] != 'Shift In-Charge']
 
-        # --- 1. CHARTS & METRICS ---
+        # --- 1. CHARTS ---
         c_chart1, c_chart2, c_metrics = st.columns([1, 1.2, 1.3])
 
         with c_chart1:
@@ -143,11 +175,8 @@ with tab_home:
 
         with c_chart2:
             st.markdown("##### ⚠️ Gaps by Unit")
-            # Filter for both VACANCY and Transferred
             gaps_df = op_df[op_df['Status'].isin(['VACANCY', 'Transferred'])]
-            
             if not gaps_df.empty:
-                # NEW: STACKED BAR CHART (Better than Pie for comparisons)
                 gap_counts = gaps_df.groupby(['Unit', 'Status']).size().reset_index(name='Count')
                 fig2 = px.bar(gap_counts, x='Unit', y='Count', color='Status',
                               color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421'},
@@ -183,11 +212,11 @@ with tab_home:
         # --- 3. MAIN TABLE ---
         st.subheader("🏭 Unit Status Map")
         
-        def agg_staff(x):
+        def agg_staff_html(x):
             staff_list = []
             for _, row in x.iterrows():
-                raw_name = row['Staff_Name']
-                display_name = re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', raw_name, flags=re.IGNORECASE).strip()
+                # USE HELPER FUNCTION HERE
+                display_name = format_staff_name(row['Staff_Name'])
 
                 if row['Status'] == 'VACANCY': 
                     staff_list.append(f'<div class="badge-vacant">🔴 VACANT</div>')
@@ -207,12 +236,12 @@ with tab_home:
             row_data = {"Desk": f"<b>{desk}</b>"}
             for unit in units:
                 matches = op_df[(op_df['Unit'] == unit) & (op_df['Desk'] == desk)]
-                row_data[unit] = "-" if matches.empty else agg_staff(matches)
+                row_data[unit] = "-" if matches.empty else agg_staff_html(matches)
             table_data.append(row_data)
         
         st.write(pd.DataFrame(table_data).to_html(escape=False, index=False, classes="table table-bordered table-striped"), unsafe_allow_html=True)
 
-        # --- 4. LEGEND ---
+        # --- LEGEND ---
         st.markdown("""
         <div class="legend-box">
             <strong>Legend:</strong>&nbsp;&nbsp;
@@ -224,9 +253,8 @@ with tab_home:
         
         st.divider()
 
-        # --- 5. DETAILED LISTS ---
+        # --- DETAILED LISTS ---
         c_list1, c_list2 = st.columns(2)
-        
         with c_list1:
             st.subheader("🚨 Manpower Shortage List")
             vac_list = op_df[op_df['Status'] == 'VACANCY'][['Unit', 'Desk', 'Action_Required']]
@@ -239,7 +267,7 @@ with tab_home:
             st.subheader("🟠 Transferred Employees")
             trf_list = op_df[op_df['Status'] == 'Transferred'][['Unit', 'Desk', 'Staff_Name']]
             if not trf_list.empty:
-                trf_list['Staff_Name'] = trf_list['Staff_Name'].apply(lambda x: re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', x, flags=re.IGNORECASE).strip())
+                trf_list['Staff_Name'] = trf_list['Staff_Name'].apply(format_staff_name)
                 st.dataframe(trf_list, use_container_width=True, hide_index=True)
             else:
                 st.success("No transferred staff pending.")
@@ -281,8 +309,9 @@ with tab_search:
             with col_search_list:
                 st.markdown(f"#### 👥 Staff Roster: {sel_unit} - {sel_desk}")
                 for _, row in subset.iterrows():
-                    raw_name = row['Staff_Name']
-                    clean_name = re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', raw_name, flags=re.IGNORECASE).strip()
+                    # USE HELPER FUNCTION HERE
+                    clean_name = format_staff_name(row['Staff_Name'])
+                    
                     if row['Status'] == 'VACANCY':
                         st.error(f"🔴 **VACANT POSITION** (Action: {row['Action_Required']})")
                     elif row['Status'] == 'Transferred':
@@ -298,7 +327,6 @@ with tab_admin:
     with col_center:
         st.header("🛠️ Admin Tools")
         
-        # --- LOGIN LOGIC ---
         if not st.session_state.admin_logged_in:
             pwd = st.text_input("Enter Admin Password", type="password")
             if st.button("Login"):
@@ -308,7 +336,6 @@ with tab_admin:
                 else:
                     st.error("Incorrect Password")
         else:
-            # --- LOGGED IN VIEW ---
             c_logout_1, c_logout_2 = st.columns([3, 1])
             with c_logout_1:
                 st.success("🔓 Logged in as Admin")
@@ -319,32 +346,26 @@ with tab_admin:
             
             st.divider()
 
-            # --- ADMIN TOOLS ---
             action_type = st.radio("Choose Action:", 
                 ["🔄 Transfer Staff (Desk to Desk)", "✏️ Change Status (Transferred/Vacancy)", "📝 Update Designation & Name", "➕ Add New Staff"], 
                 horizontal=True
             )
             st.markdown("---")
 
-            # --- TOOL 1: UPDATE DESIGNATION ---
             if action_type == "📝 Update Designation & Name":
                 st.info("Update employee name and assign official designation.")
-                
                 c1, c2 = st.columns(2)
                 unit_sel = c1.selectbox("Unit", df['Unit'].unique())
                 desk_sel = c2.selectbox("Desk", df[df['Unit'] == unit_sel]['Desk'].unique())
                 
                 staff_rows = df[(df['Unit'] == unit_sel) & (df['Desk'] == desk_sel) & (df['Status'] != 'VACANCY')]
-                
                 if not staff_rows.empty:
                     target_staff = st.selectbox("Select Staff Member", staff_rows['Staff_Name'].unique())
                     idx = df[(df['Unit'] == unit_sel) & (df['Desk'] == desk_sel) & (df['Staff_Name'] == target_staff)].index[0]
-                    
                     current_full_name = df.at[idx, 'Staff_Name']
                     
                     ec1, ec2 = st.columns([2, 1])
                     new_name_input = ec1.text_input("Employee Name (Without Designation)", value=current_full_name)
-                    
                     designation_opts = ["-- Select --", "Junior Engineer (JE)", "Assistant Engineer (AE)", "Deputy Ex. Engineer (DyEE)", "Addl. Ex. Engineer (Add EE)", "Executive Engineer (EE)"]
                     new_desg = ec2.selectbox("Select Designation", designation_opts)
                     
@@ -368,15 +389,11 @@ with tab_admin:
                         if update_github(df):
                             st.success(f"Updated to: {final_name}")
                             st.rerun()
-                else:
-                    st.warning("No editable staff found here.")
 
-            # --- TOOL 2: CHANGE STATUS ---
             elif action_type == "✏️ Change Status (Transferred/Vacancy)":
                 c1, c2 = st.columns(2)
                 unit_sel = c1.selectbox("Unit", df['Unit'].unique())
                 desk_sel = c2.selectbox("Desk", df[df['Unit'] == unit_sel]['Desk'].unique())
-                
                 staff_rows = df[(df['Unit'] == unit_sel) & (df['Desk'] == desk_sel)]
                 if not staff_rows.empty:
                     target_staff = st.selectbox("Select Staff Member", staff_rows['Staff_Name'].unique())
@@ -388,33 +405,26 @@ with tab_admin:
                         if new_status == "VACANCY":
                             df.at[idx, 'Staff_Name'] = "VACANT POSITION"
                             df.at[idx, 'Action_Required'] = "Manpower Shortage"
-                        
                         save_local(df)
                         if update_github(df):
                             st.success(f"Updated {target_staff} to {new_status}")
                             st.rerun()
 
-            # --- TOOL 3: TRANSFER ---
             elif action_type == "🔄 Transfer Staff (Desk to Desk)":
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.subheader("1. Who?")
                     u1 = st.selectbox("From Unit", df['Unit'].unique(), key="u1")
                     d1 = st.selectbox("From Desk", df[df['Unit'] == u1]['Desk'].unique(), key="d1")
                     people = df[(df['Unit'] == u1) & (df['Desk'] == d1) & (df['Staff_Name'] != 'VACANT POSITION')]['Staff_Name'].unique()
                     p1 = st.selectbox("Person", people) if len(people) > 0 else None
-                    
                 with col2:
-                    st.subheader("2. Where?")
                     u2 = st.selectbox("To Unit", df['Unit'].unique(), key="u2")
                     d2 = st.selectbox("To Desk", df[df['Unit'] == u2]['Desk'].unique(), key="d2")
-
                 old_seat_opt = st.radio("What happens to old seat?", ["Mark VACANT", "No Change (Swap)"], horizontal=True)
 
                 if p1 and st.button("Execute Transfer"):
                     src_idx = df[(df['Unit'] == u1) & (df['Desk'] == d1) & (df['Staff_Name'] == p1)].index[0]
                     tgt_vac_rows = df[(df['Unit'] == u2) & (df['Desk'] == d2) & (df['Status'] == 'VACANCY')]
-                    
                     if not tgt_vac_rows.empty:
                         tgt_idx = tgt_vac_rows.index[0]
                         df.at[tgt_idx, 'Staff_Name'] = p1
@@ -434,13 +444,11 @@ with tab_admin:
                         st.success("Transfer Successful!")
                         st.rerun()
 
-            # --- TOOL 4: ADD ---
             elif action_type == "➕ Add New Staff":
                 c1, c2, c3 = st.columns(3)
                 new_u = c1.selectbox("Unit", df['Unit'].unique())
                 new_d = c2.selectbox("Desk", df[df['Unit'] == new_u]['Desk'].unique())
                 new_n = c3.text_input("Staff Name")
-                
                 if st.button("Add Person"):
                     vac_rows = df[(df['Unit'] == new_u) & (df['Desk'] == new_d) & (df['Status'] == 'VACANCY')]
                     if not vac_rows.empty:
