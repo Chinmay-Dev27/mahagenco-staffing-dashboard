@@ -11,7 +11,7 @@ DATA_FILE = 'stitched_staffing_data.csv'
 # ⚠️ UPDATE REPO
 REPO_NAME = "Chinmay-Dev27/mahagenco-staffing-dashboard"
 
-# --- CUSTOM CSS FOR BETTER UI ---
+# --- CUSTOM CSS ---
 st.markdown("""
 <style>
     .metric-card {
@@ -21,7 +21,15 @@ st.markdown("""
         padding: 15px;
         text-align: center;
     }
-    .stDataFrame { border-radius: 10px; overflow: hidden; }
+    .badge-vacant {
+        background-color: #ff4b4b; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.9em;
+    }
+    .badge-transfer {
+        background-color: #ffa421; color: black; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.9em;
+    }
+    .badge-active {
+        color: #21c354; font-weight: 500;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -105,43 +113,44 @@ with tab_home:
 
         # --- SHIFT IN CHARGE (HEADER) ---
         st.markdown("### 👨‍✈️ Shift In-Charge (EE)")
-        ee_rows = df[df['Desk'] == 'Shift In-Charge']['Staff_Name'].unique()
-        st.info(" | ".join([f"**{name}**" for name in ee_rows]))
+        ee_data = df[df['Desk'] == 'Shift In-Charge']
+        if not ee_data.empty:
+            # 1. Get unique names
+            ee_names = ee_data['Staff_Name'].unique()
+            # 2. Clean 'EE' from display name (e.g. 'V.V. GAIDHANE EE' -> 'V.V. GAIDHANE')
+            clean_ee_names = [name.replace(" EE", "").strip() for name in ee_names]
+            
+            # Display as a row of cards/info
+            cols = st.columns(len(clean_ee_names))
+            for i, name in enumerate(clean_ee_names):
+                cols[i].info(f"**{name}**")
+        else:
+            st.info("No Shift In-Charge data found.")
 
         # --- TRANSPOSED MASTER TABLE ---
         st.subheader("🏭 Unit Status Map")
         
-        # 1. Create Pivot Table (Rows=Desk, Cols=Unit)
-        # We need to aggregate names if there are multiple per desk
+        # Function to generate clean HTML for table cells
         def agg_staff(x):
             staff_list = []
             for _, row in x.iterrows():
-                color = "white"
-                icon = "👤"
-                if row['Status'] == 'VACANCY': 
-                    color = "#ff4b4b" # Red
-                    icon = "🔴"
-                    name = "VACANT"
-                elif row['Status'] == 'Transferred':
-                    color = "#ffa421" # Orange
-                    icon = "🟠"
-                    name = row['Staff_Name'] + " (Trf)"
-                else:
-                    color = "#21c354" # Green
-                    name = row['Staff_Name']
-                
-                # HTML Badge
-                staff_list.append(f'<span style="color:{color}; font-weight:bold;">{icon} {name}</span>')
-            return "<br>".join(staff_list)
+                # 1. Clean the name: Remove "(Transferred)" text if it exists in the raw data
+                raw_name = row['Staff_Name']
+                display_name = raw_name.replace("(Transferred)", "").replace("(Trf)", "").strip()
 
-        pivot_df = op_df.pivot_table(
-            index='Desk', 
-            columns='Unit', 
-            values=['Staff_Name', 'Status'], 
-            aggfunc=lambda x: x  # Pass full series to custom agg later? No, pivot_table is tricky with custom HTML.
-        )
-        
-        # Let's build the table manually for full control over HTML
+                if row['Status'] == 'VACANCY': 
+                    # Red Badge for Vacancy
+                    staff_list.append(f'<div class="badge-vacant">🔴 VACANT</div>')
+                elif row['Status'] == 'Transferred':
+                    # Orange Badge for Transfer
+                    staff_list.append(f'<div class="badge-transfer">🟠 {display_name}</div>')
+                else:
+                    # Standard Green/White for Active
+                    staff_list.append(f'<div class="badge-active">👤 {display_name}</div>')
+            
+            return "".join(staff_list)
+
+        # Build Pivot Table Data
         desks_order = [
             'PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
             'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)'
@@ -151,7 +160,7 @@ with tab_home:
         table_data = []
 
         for desk in desks_order:
-            row_data = {"Desk": desk}
+            row_data = {"Desk": f"<b>{desk}</b>"}
             for unit in units:
                 matches = op_df[(op_df['Unit'] == unit) & (op_df['Desk'] == desk)]
                 if matches.empty:
@@ -162,8 +171,8 @@ with tab_home:
         
         display_df = pd.DataFrame(table_data)
         
-        # Render as HTML Table
-        st.write(display_df.to_html(escape=False, index=False, classes="table table-bordered"), unsafe_allow_html=True)
+        # Render Table
+        st.write(display_df.to_html(escape=False, index=False, classes="table table-bordered table-striped"), unsafe_allow_html=True)
 
 # ==========================================
 # TAB 2: ADMIN ACTIONS
@@ -183,7 +192,7 @@ with tab_admin:
         )
         st.divider()
 
-        # --- OPTION 1: CHANGE STATUS (Mark as Transferred) ---
+        # --- OPTION 1: CHANGE STATUS ---
         if action_type == "✏️ Change Status (Mark Transferred/Active)":
             st.info("Use this to mark an existing employee as 'Transferred' without moving them yet.")
             
@@ -200,7 +209,9 @@ with tab_admin:
                 
                 if st.button("Update Status"):
                     df.at[idx, 'Status'] = new_status
-                    # If vacancy, rename to VACANT
+                    
+                    # Logic: If marking VACANCY, rename to VACANT POSITION. 
+                    # If Transferred/Active, keep name but update status.
                     if new_status == "VACANCY":
                         df.at[idx, 'Staff_Name'] = "VACANT POSITION"
                         df.at[idx, 'Action_Required'] = "Immediate Deployment"
@@ -219,7 +230,13 @@ with tab_admin:
                 st.subheader("1. Who?")
                 u1 = st.selectbox("From Unit", df['Unit'].unique(), key="u1")
                 d1 = st.selectbox("From Desk", df[df['Unit'] == u1]['Desk'].unique(), key="d1")
-                p1 = st.selectbox("Person", df[(df['Unit'] == u1) & (df['Desk'] == d1)]['Staff_Name'].unique())
+                # Filter out VACANT positions from selection
+                people = df[(df['Unit'] == u1) & (df['Desk'] == d1) & (df['Staff_Name'] != 'VACANT POSITION')]['Staff_Name'].unique()
+                if len(people) > 0:
+                    p1 = st.selectbox("Person", people)
+                else:
+                    p1 = None
+                    st.error("No staff here.")
                 
             with col2:
                 st.subheader("2. Where?")
@@ -228,8 +245,8 @@ with tab_admin:
 
             old_seat_opt = st.radio("What happens to old seat?", ["Mark VACANT", "No Change (Swap)"], horizontal=True)
 
-            if st.button("Execute Transfer"):
-                # 1. Find indexes
+            if p1 and st.button("Execute Transfer"):
+                # 1. Find Source Index
                 src_idx = df[(df['Unit'] == u1) & (df['Desk'] == d1) & (df['Staff_Name'] == p1)].index[0]
                 
                 # 2. Check Target Vacancy
