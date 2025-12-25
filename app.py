@@ -1,17 +1,19 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import matplotlib.pyplot as plt
 import re
 from github import Github
 import io
+import tempfile
 
-# --- REPORTLAB IMPORTS (For Vector PDF) ---
+# --- REPORTLAB IMPORTS ---
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.graphics.shapes import Drawing, Line, Polygon
-from reportlab.graphics import renderPDF
+from reportlab.lib.units import inch
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Mahagenco Parli Ops", page_icon="⚡", layout="wide")
@@ -22,7 +24,6 @@ REPO_NAME = "Chinmay-Dev27/mahagenco-staffing-dashboard"
 st.markdown("""
 <style>
     .metric-card { background-color: #0E1117; border: 1px solid #30333F; border-radius: 10px; padding: 15px; text-align: center; }
-    /* Webpage Badges */
     .badge-vacant { background-color: #ff4b4b; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; display: inline-block; margin-bottom: 2px;}
     .badge-transfer { background-color: #ffa421; color: black; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; display: inline-block; margin-bottom: 2px;}
     .badge-active { background-color: #e6fffa; color: #047857; border: 1px solid #047857; padding: 4px 8px; border-radius: 4px; font-weight: 500; font-size: 0.85em; display: inline-block; margin-bottom: 2px;}
@@ -74,21 +75,49 @@ def format_staff_name(raw_name):
     if match: return f"{clean[:match.start()].strip()} ({match.group(1)})"
     return clean
 
-# --- VECTOR ICON GENERATORS (Crisp Printing) ---
+# --- CHART & ICON GENERATORS ---
+def create_dashboard_charts(df):
+    op_df = df[df['Desk'] != 'Shift In-Charge']
+    
+    # 1. Pie Chart
+    fig1, ax1 = plt.subplots(figsize=(4, 3))
+    status_counts = op_df['Status'].value_counts()
+    colors_map = {'VACANCY':'#D32F2F', 'Transferred':'#F57C00', 'Active':'#388E3C', 'Long Leave':'#555'}
+    pie_cols = [colors_map.get(x, '#999') for x in status_counts.index]
+    ax1.pie(status_counts, labels=status_counts.index, autopct='%1.1f%%', colors=pie_cols, startangle=90)
+    ax1.set_title('Overall Status', fontsize=10, fontweight='bold')
+    
+    # 2. Bar Chart
+    gaps = op_df[op_df['Status'].isin(['VACANCY', 'Transferred'])]
+    if not gaps.empty:
+        gap_counts = gaps.groupby(['Unit', 'Status']).size().unstack(fill_value=0)
+        fig2, ax2 = plt.subplots(figsize=(5, 3))
+        gap_counts.plot(kind='bar', stacked=False, color=[colors_map.get(x, 'red') for x in gap_counts.columns], ax=ax2)
+        ax2.set_title('Critical Gaps', fontsize=10, fontweight='bold')
+        ax2.tick_params(axis='x', rotation=0)
+        ax2.legend(fontsize=8)
+        plt.tight_layout()
+    else:
+        fig2, ax2 = plt.subplots(figsize=(5, 3))
+        ax2.text(0.5, 0.5, "No Critical Gaps", ha='center', va='center')
+        ax2.axis('off')
+
+    f1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    f2 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    fig1.savefig(f1.name, format='png', dpi=100, bbox_inches='tight')
+    fig2.savefig(f2.name, format='png', dpi=100, bbox_inches='tight')
+    plt.close(fig1); plt.close(fig2)
+    return f1.name, f2.name
+
 def draw_red_cross():
-    """Draws a vector Red X"""
     d = Drawing(10, 10)
-    # Thick Red X
     d.add(Line(1, 1, 9, 9, strokeColor=colors.red, strokeWidth=2))
     d.add(Line(1, 9, 9, 1, strokeColor=colors.red, strokeWidth=2))
     return d
 
 def draw_orange_flag():
-    """Draws a vector Orange Flag"""
     d = Drawing(10, 10)
-    # Pole
     d.add(Line(2, 0, 2, 10, strokeColor=colors.black, strokeWidth=1))
-    # Flag Triangle (Filled)
     d.add(Polygon([2, 10, 9, 7, 2, 4], fillColor=colors.orange, strokeWidth=0))
     return d
 
@@ -104,24 +133,26 @@ def generate_pdf_report_lab(df):
     story.append(Paragraph(f"Generated: {pd.Timestamp.now().strftime('%d-%b-%Y %H:%M')}", styles['Normal']))
     story.append(Spacer(1, 15))
 
-    # 2. Executive Metrics Table (Simple & Clean)
-    op_df = df[df['Desk'] != 'Shift In-Charge']
-    active = len(op_df[op_df['Status']=='Active'])
-    vacant = len(op_df[op_df['Status']=='VACANCY'])
-    transferred = len(op_df[op_df['Status']=='Transferred'])
+    # 2. Charts & Metrics
+    chart1, chart2 = create_dashboard_charts(df)
+    img1 = Image(chart1, width=200, height=150)
+    img2 = Image(chart2, width=250, height=150)
     
-    metric_data = [
-        [f"Active Staff: {active}", f"CRITICAL VACANCIES: {vacant}", f"Transfers: {transferred}"]
-    ]
-    t_metrics = Table(metric_data, colWidths=[150, 180, 150])
-    t_metrics.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,-1), colors.whitesmoke),
-        ('BOX', (0,0), (-1,-1), 1, colors.grey),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('TEXTCOLOR', (1,0), (1,0), colors.red),
-        ('FONTNAME', (1,0), (1,0), 'Helvetica-Bold'),
-    ]))
-    story.append(t_metrics)
+    # Metrics Text
+    op_df = df[df['Desk'] != 'Shift In-Charge']
+    vacant_count = len(op_df[op_df['Status']=='VACANCY'])
+    trf_count = len(op_df[op_df['Status']=='Transferred'])
+    
+    # Layout Table for Charts
+    chart_table = Table([[img1, img2]], colWidths=[250, 250])
+    chart_table.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER'), ('VALIGN', (0,0), (-1,-1), 'TOP')]))
+    story.append(chart_table)
+    story.append(Spacer(1, 10))
+    
+    # Metrics Row
+    m_style = ParagraphStyle('M', parent=styles['Normal'], alignment=TA_CENTER, fontSize=10)
+    m_text = f"<b>CRITICAL VACANCIES: <font color='red'>{vacant_count}</font></b>  |  <b>TRANSFERS: <font color='orange'>{trf_count}</font></b>"
+    story.append(Paragraph(m_text, m_style))
     story.append(Spacer(1, 20))
 
     # 3. Main Roster Matrix
@@ -129,10 +160,7 @@ def generate_pdf_report_lab(df):
     desks = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
              'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
     
-    # Header Row
     data = [['Position'] + units]
-    
-    # Base Styles
     t_style = [
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.white),
@@ -143,55 +171,83 @@ def generate_pdf_report_lab(df):
         ('FONTSIZE', (0,0), (-1,-1), 8),
     ]
     
-    for row_idx, desk in enumerate(desks, 1):
-        # Desk Column (Bold)
+    for desk in desks:
         row = [Paragraph(f"<b>{desk}</b>", styles['Normal'])]
-        
-        for col_idx, u in enumerate(units, 1):
+        for u in units:
             matches = op_df[(op_df['Unit'] == u) & (op_df['Desk'] == desk)]
-            cell_content = []
-            
+            cell = []
             if matches.empty:
-                cell_content.append(Paragraph("-", styles['Normal']))
+                cell.append(Paragraph("-", styles['Normal']))
             else:
                 for _, r in matches.iterrows():
                     nm = format_staff_name(r['Staff_Name'])
-                    
                     if r['Status'] == 'VACANCY':
-                        # Insert VECTOR drawing + Bold Text
-                        icon = draw_red_cross()
-                        # Table inside cell to align Icon and Text
-                        sub_t = Table([[icon, Paragraph("<b>VACANT</b>", styles['Normal'])]], colWidths=[12, 70])
+                        sub_t = Table([[draw_red_cross(), Paragraph("<b>VACANT</b>", styles['Normal'])]], colWidths=[12, 70])
                         sub_t.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('LEFTPADDING', (0,0), (-1,-1), 0)]))
-                        cell_content.append(sub_t)
-                    
+                        cell.append(sub_t)
                     elif r['Status'] == 'Transferred':
-                        # Insert VECTOR drawing + Italic Text
-                        icon = draw_orange_flag()
-                        sub_t = Table([[icon, Paragraph(f"<i>{nm}</i>", styles['Normal'])]], colWidths=[12, 70])
+                        sub_t = Table([[draw_orange_flag(), Paragraph(f"<i>{nm}</i>", styles['Normal'])]], colWidths=[12, 70])
                         sub_t.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE'), ('LEFTPADDING', (0,0), (-1,-1), 0)]))
-                        cell_content.append(sub_t)
-                    
+                        cell.append(sub_t)
                     else:
-                        # Standard Text
-                        cell_content.append(Paragraph(nm, styles['Normal']))
-            
-            row.append(cell_content)
+                        cell.append(Paragraph(nm, styles['Normal']))
+            row.append(cell)
         data.append(row)
 
-    # Build Table
     main_table = Table(data, colWidths=[100, 130, 130, 130])
     main_table.setStyle(TableStyle(t_style))
     story.append(main_table)
     
-    # 4. Legend (Vector Icons in Legend too!)
+    # 4. Legend
     story.append(Spacer(1, 10))
-    leg_cross = draw_red_cross()
-    leg_flag = draw_orange_flag()
-    leg_data = [[leg_cross, "Vacancy (Action Required)", leg_flag, "Transferred (Replacement Needed)"]]
-    leg_table = Table(leg_data, colWidths=[15, 150, 15, 200])
+    leg_data = [[draw_red_cross(), "Vacancy (Shortage)", draw_orange_flag(), "Transferred (Risk)"]]
+    leg_table = Table(leg_data, colWidths=[15, 120, 15, 120])
     leg_table.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'MIDDLE')]))
     story.append(leg_table)
+    
+    # 5. NEW SECTION: VACANCY & TRANSFER SUMMARY LIST
+    story.append(PageBreak())
+    story.append(Paragraph("Vacancy & Transfer Summary List", styles['Heading2']))
+    story.append(Spacer(1, 10))
+    
+    # Filter for list
+    summary_df = op_df[op_df['Status'].isin(['VACANCY', 'Transferred'])].copy()
+    
+    if not summary_df.empty:
+        # Sort for readability
+        summary_df = summary_df.sort_values(by=['Unit', 'Status'])
+        
+        # Summary Table Header
+        sum_data = [['Unit', 'Desk', 'Staff Name / Status', 'Category']]
+        
+        for _, r in summary_df.iterrows():
+            # Clean name
+            nm = format_staff_name(r['Staff_Name'])
+            status_txt = "SHORTAGE" if r['Status'] == 'VACANCY' else "TRANSFER"
+            color_txt = colors.red if r['Status'] == 'VACANCY' else colors.orange
+            
+            # Row
+            row = [
+                r['Unit'],
+                r['Desk'],
+                Paragraph(f"<b>{nm}</b>", styles['Normal']),
+                Paragraph(f"<b><font color='{color_txt}'>{status_txt}</font></b>", styles['Normal'])
+            ]
+            sum_data.append(row)
+            
+        sum_table = Table(sum_data, colWidths=[60, 150, 180, 100])
+        sum_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#34495e')), # Dark Header
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.whitesmoke, colors.white]), # Alternating rows
+            ('PADDING', (0,0), (-1,-1), 6),
+        ]))
+        story.append(sum_table)
+    else:
+        story.append(Paragraph("No active vacancies or transfers reported.", styles['Normal']))
 
     doc.build(story)
     buffer.seek(0)
@@ -229,7 +285,6 @@ st.title("⚡ Operation Staff Dashboard")
 tab1, tab2, tab3 = st.tabs(["Overview", "Search", "Admin"])
 
 with tab1:
-    # 1. WEBPAGE: Colorful Badges (As requested)
     op_df = df[df['Desk'] != 'Shift In-Charge']
     
     def agg_staff_html(x):
@@ -244,7 +299,6 @@ with tab1:
                 html.append(f'<div class="badge-active">👤 {name}</div>')
         return "".join(html)
 
-    # Render Table
     units = sorted(op_df['Unit'].unique())
     desks = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
              'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
@@ -264,7 +318,7 @@ with tab1:
     c1.metric("Shortage", len(op_df[op_df['Status']=='VACANCY']))
     c2.metric("Transferred", len(op_df[op_df['Status']=='Transferred']))
 
-# ... (Standard Search/Admin tabs preserved) ...
+# ... (Search and Admin tabs preserved) ...
 with tab2:
     st.info("Select Unit and Desk to view details.")
     if not df.empty:
@@ -284,7 +338,6 @@ with tab3:
         if st.button("Logout"):
             st.session_state.admin_logged_in=False
             st.rerun()
-        st.write("Use tools to update staff.")
         act = st.selectbox("Action", ["Add", "Transfer", "Status"])
         if act == "Status":
             u = st.selectbox("U", df['Unit'].unique())
@@ -295,4 +348,20 @@ with tab3:
                 idx = df[(df['Unit']==u)&(df['Desk']==d)&(df['Staff_Name']==p)].index[0]
                 df.at[idx,'Status'] = s
                 if s=='VACANCY': df.at[idx,'Staff_Name']="VACANT"
+                save_local(df); update_github(df); st.rerun()
+        elif act == "Transfer":
+            c1, c2 = st.columns(2)
+            u1 = c1.selectbox("From U", df['Unit'].unique())
+            d1 = c1.selectbox("From D", df[df['Unit']==u1]['Desk'].unique())
+            p = c1.selectbox("Per", df[(df['Unit']==u1)&(df['Desk']==d1)]['Staff_Name'].unique())
+            u2 = c2.selectbox("To U", df['Unit'].unique())
+            d2 = c2.selectbox("To D", df[df['Unit']==u2]['Desk'].unique())
+            if st.button("Trf"):
+                src = df[(df['Unit']==u1)&(df['Desk']==d1)&(df['Staff_Name']==p)].index[0]
+                tgt = df[(df['Unit']==u2)&(df['Desk']==d2)&(df['Status']=='VACANCY')]
+                if not tgt.empty:
+                    df.at[tgt.index[0],'Staff_Name']=p; df.at[tgt.index[0],'Status']='Active'
+                else:
+                    df = pd.concat([df, pd.DataFrame([{"Unit":u2,"Desk":d2,"Staff_Name":p,"Status":"Active"}])], ignore_index=True)
+                df.at[src,'Staff_Name']="VACANT"; df.at[src,'Status']="VACANCY"
                 save_local(df); update_github(df); st.rerun()
