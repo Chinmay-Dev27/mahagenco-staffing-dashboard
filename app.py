@@ -28,24 +28,26 @@ st.markdown("""
 # --- SESSION STATE ---
 if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
 
-# --- PDF GENERATOR CLASS (Enhanced) ---
+# --- PDF GENERATOR CLASS (Enhanced Visuals) ---
 class PDF(FPDF):
     def header(self):
-        # Logo placeholder (if you have a URL, fpdf requires a local file or temp download, skipping for simplicity)
         self.set_font('Arial', 'B', 16)
-        self.set_text_color(44, 62, 80) # Dark Blue
+        self.set_text_color(44, 62, 80) # Dark Blue theme color
         self.cell(0, 10, 'MAHAGENCO Parli TPS - Operation Shift Report', 0, 1, 'C')
         self.ln(2)
-        self.set_font('Arial', 'I', 10)
-        self.set_text_color(100, 100, 100)
-        self.cell(0, 5, f'Generated on: {pd.Timestamp.now().strftime("%d-%b-%Y %H:%M")}', 0, 1, 'C')
-        self.ln(10)
+        self.set_font('Arial', 'I', 9)
+        self.set_text_color(120, 120, 120)
+        self.cell(0, 5, f'Official Record Generated on: {pd.Timestamp.now().strftime("%d-%b-%Y %H:%M")}', 0, 1, 'C')
+        # Draw a bottom line for header
+        self.set_draw_color(200, 200, 200)
+        self.line(10, 28, 200, 28)
+        self.ln(12)
 
     def footer(self):
         self.set_y(-15)
         self.set_font('Arial', 'I', 8)
         self.set_text_color(150, 150, 150)
-        self.cell(0, 10, f'Page {self.page_no()} | Official Record', 0, 0, 'C')
+        self.cell(0, 10, f'Page {self.page_no()} | internal circulation only', 0, 0, 'C')
 
 # --- DATA & HELPER FUNCTIONS ---
 def update_github(df):
@@ -88,22 +90,19 @@ def format_staff_name(raw_name):
     if match: return f"{clean[:match.start()].strip()} ({match.group(1)})"
     return clean
 
-# --- ADVANCED PDF GENERATION ---
+# --- CHART IMAGE GENERATION FOR PDF ---
 def create_chart_images(df):
-    """Generates temporary chart images for the PDF using Matplotlib"""
     op_df = df[df['Desk'] != 'Shift In-Charge']
     
-    # 1. Pie Chart
+    # 1. Pie Chart (Overall Status)
     status_counts = op_df['Status'].value_counts()
     fig1, ax1 = plt.subplots(figsize=(4, 3))
     colors = {'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96', 'Long Leave':'#333333'}
-    # Map colors safely
     pie_colors = [colors.get(x, '#999999') for x in status_counts.index]
-    
     ax1.pie(status_counts, labels=status_counts.index, autopct='%1.1f%%', startangle=90, colors=pie_colors, textprops={'fontsize': 8})
     ax1.set_title('Overall Staff Status', fontsize=10, fontweight='bold')
     
-    # 2. Bar Chart
+    # 2. Bar Chart (Critical Gaps)
     gaps = op_df[op_df['Status'].isin(['VACANCY', 'Transferred'])]
     if not gaps.empty:
         gap_counts = gaps.groupby(['Unit', 'Status']).size().unstack(fill_value=0)
@@ -111,59 +110,71 @@ def create_chart_images(df):
         gap_counts.plot(kind='bar', stacked=False, color=[colors.get(x, 'red') for x in gap_counts.columns], ax=ax2)
         ax2.set_title('Critical Gaps by Unit', fontsize=10, fontweight='bold')
         ax2.tick_params(axis='x', rotation=0, labelsize=8)
-        ax2.tick_params(axis='y', labelsize=8)
-        ax2.set_xlabel('')
         ax2.legend(fontsize=7)
     else:
         fig2, ax2 = plt.subplots(figsize=(5, 3))
         ax2.text(0.5, 0.5, "No Critical Gaps", ha='center', va='center')
         ax2.axis('off')
 
-    # Save to temp
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f1, tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f2:
         fig1.savefig(f1.name, format='png', bbox_inches='tight', dpi=100)
         fig2.savefig(f2.name, format='png', bbox_inches='tight', dpi=100)
         return f1.name, f2.name
 
+# --- CORE PDF REPORT GENERATION ---
 def generate_pdf_report(df):
     pdf = PDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    # 1. VISUAL DASHBOARD SECTION
+    # --- SECTION 1: EXECUTIVE DASHBOARD ---
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "Executive Dashboard", 0, 1, 'L')
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(0, 8, "Executive Dashboard Summary", 0, 1, 'L')
+    pdf.ln(2)
     
     # Embed Charts
     img1, img2 = create_chart_images(df)
     current_y = pdf.get_y()
-    pdf.image(img1, x=10, y=current_y, w=70)
-    pdf.image(img2, x=90, y=current_y+2, w=100)
-    pdf.ln(60) # Move down past images
+    pdf.image(img1, x=10, y=current_y, w=75)
+    pdf.image(img2, x=95, y=current_y, w=105)
+    pdf.ln(65) # Move past images
 
-    # Metrics Text
+    # Summary Metrics Box
     op_df = df[df['Desk'] != 'Shift In-Charge']
     active = len(op_df[op_df['Status']=='Active'])
     vacant = len(op_df[op_df['Status']=='VACANCY'])
     transferred = len(op_df[op_df['Status']=='Transferred'])
     
-    pdf.set_fill_color(240, 240, 240)
+    pdf.set_fill_color(245, 247, 250) # Very light gray box
+    pdf.set_draw_color(200, 200, 200)
     pdf.set_font("Arial", '', 10)
-    pdf.cell(60, 10, f"Total Active: {active}", 1, 0, 'C', 1)
-    pdf.cell(60, 10, f"Critical Shortage: {vacant}", 1, 0, 'C', 1)
-    pdf.cell(60, 10, f"Transferred (Risk): {transferred}", 1, 1, 'C', 1)
-    pdf.ln(10)
+    # Draw a container rectangle
+    pdf.rect(10, pdf.get_y(), 190, 12, 'DF')
+    pdf.set_xy(10, pdf.get_y()+1)
+    pdf.cell(63, 10, f"  Total Active Positions: {active}", 0, 0, 'L')
+    
+    # Highlighted metrics
+    pdf.set_text_color(220, 50, 50) # Red for vacancy
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(63, 10, f"Critical Shortage: {vacant}", 0, 0, 'C')
+    
+    pdf.set_text_color(220, 150, 0) # Orange for transfer
+    pdf.set_font("Arial", 'I', 10)
+    pdf.cell(63, 10, f"Transferred (Risk): {transferred}  ", 0, 1, 'R')
+    pdf.ln(15)
 
-    # 2. MAIN ROSTER (MATRIX LAYOUT)
+    # --- SECTION 2: OPERATIONAL ROSTER (MATRIX) ---
+    pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "Operational Roster (Unit Matrix)", 0, 1, 'L')
+    pdf.cell(0, 10, "Operational Roster (Unit Matrix View)", 0, 1, 'L')
     
     # Table Header
     pdf.set_font("Arial", 'B', 9)
-    pdf.set_fill_color(44, 62, 80) # Dark Header
+    pdf.set_fill_color(44, 62, 80) # Dark Blue Header
     pdf.set_text_color(255, 255, 255) # White Text
+    pdf.set_draw_color(44, 62, 80)
     
-    # Column Widths
     w_desk = 55
     w_unit = 45
     
@@ -173,79 +184,90 @@ def generate_pdf_report(df):
         pdf.cell(w_unit, 8, str(u), 1, 0, 'C', 1)
     pdf.ln()
     
-    # Table Body
-    pdf.set_font("Arial", size=8)
-    pdf.set_text_color(0, 0, 0) # Reset to black
+    # Table Body definition
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_draw_color(200, 200, 200) # Lighter borders for body
     
     desks_order = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
                    'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
     
     for desk in desks_order:
-        # Check height needed (multi-cell simulation)
-        pdf.set_fill_color(255, 255, 255)
-        
-        # We need to gather data first to see max height of row
+        # Prepare row data and calculate height
         row_data = {}
         max_lines = 1
         
         for u in units:
             matches = op_df[(op_df['Unit'] == u) & (op_df['Desk'] == desk)]
+            staff_list = []
+            has_vacant = False
+            has_transfer = False
+            
             if matches.empty:
                 txt = "-"
             else:
-                # Join names with newlines
-                names = []
                 for _, r in matches.iterrows():
                     nm = format_staff_name(r['Staff_Name'])
                     st_code = ""
-                    if r['Status'] == 'VACANCY': st_code = " [VACANT]"
-                    elif r['Status'] == 'Transferred': st_code = " [TRF]"
-                    names.append(f"{nm}{st_code}")
-                txt = "\n".join(names)
+                    if r['Status'] == 'VACANCY': 
+                        st_code = " [VACANT]"; has_vacant = True
+                    elif r['Status'] == 'Transferred': 
+                        st_code = " [TRF]"; has_transfer = True
+                    staff_list.append(f"{nm}{st_code}")
+                txt = "\n".join(staff_list)
             
-            row_data[u] = txt
-            # Rough calc of lines
+            row_data[u] = {'text': txt, 'vacant': has_vacant, 'transfer': has_transfer}
             lines = txt.count('\n') + 1
             if lines > max_lines: max_lines = lines
             
         row_height = max_lines * 5 + 4
         
-        # Check page break
+        # Page break check
         if pdf.get_y() + row_height > 270: pdf.add_page()
         
-        # Draw Desk Cell
+        # Draw Desk Column (Left Header)
+        pdf.set_font("Arial", 'B', 9)
+        pdf.set_fill_color(240, 240, 245) # Slight gray for left header
+        pdf.set_text_color(0,0,0)
         x_start = pdf.get_x()
         y_start = pdf.get_y()
-        pdf.set_font("Arial", 'B', 8)
-        pdf.multi_cell(w_desk, row_height, desk, 1, 'L')
+        pdf.multi_cell(w_desk, row_height, desk, 1, 'L', 1)
         
-        # Draw Unit Cells
+        # Draw Unit Data Cells (with dynamic coloring)
         pdf.set_xy(x_start + w_desk, y_start)
-        pdf.set_font("Arial", size=8)
         
         for u in units:
-            content = row_data[u]
-            # Simple color logic for cell text? FPDF is hard with mixed colors in one cell.
-            # We will color the WHOLE cell text red if it contains VACANT for visual alert
-            if "[VACANT]" in content: pdf.set_text_color(200, 0, 0)
-            elif "[TRF]" in content: pdf.set_text_color(200, 100, 0)
-            else: pdf.set_text_color(0, 0, 0)
-            
+            data = row_data[u]
+            # Determine Cell Style based on content priority
+            if data['vacant']:
+                pdf.set_fill_color(255, 235, 235) # Light Red Background
+                pdf.set_font("Arial", 'B', 8) # Bold Text
+            elif data['transfer']:
+                pdf.set_fill_color(255, 245, 220) # Light Orange Background
+                pdf.set_font("Arial", 'I', 8) # Italic Text
+            else:
+                pdf.set_fill_color(255, 255, 255) # White Background
+                pdf.set_font("Arial", '', 8) # Normal Text
+
             x_curr = pdf.get_x()
             y_curr = pdf.get_y()
-            pdf.multi_cell(w_unit, 5, content, 1, 'L') # 5 is line height
-            pdf.set_xy(x_curr + w_unit, y_curr) # Move back to top right of this cell
+            # Draw cell with fill (DF = Draw border and Fill background)
+            pdf.multi_cell(w_unit, 5, data['text'], 'DF', 'L')
+            pdf.set_xy(x_curr + w_unit, y_curr) # Move to right for next cell
             
-        pdf.ln(row_height) # Move to next row
-        pdf.set_text_color(0, 0, 0)
+        pdf.ln(row_height) # Move to next row line
 
-    # Shift In Charge Footer
-    pdf.ln(5)
+    # Shift In Charge Footer Section
+    pdf.ln(10)
+    pdf.set_fill_color(44, 62, 80)
+    pdf.set_text_color(255, 255, 255)
     pdf.set_font("Arial", 'B', 10)
-    pdf.cell(0, 8, "Shift In-Charge (EE) On Duty:", 0, 1, 'L')
+    pdf.cell(0, 8, "  Shift In-Charge (EE) On Duty Summary", 1, 1, 'L', 1)
+    
+    pdf.set_fill_color(245, 247, 250)
+    pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", '', 9)
     ee_names = [format_staff_name(x) for x in df[df['Desk']=='Shift In-Charge']['Staff_Name'].unique()]
-    pdf.multi_cell(0, 5, ", ".join(ee_names), 0, 'L')
+    pdf.multi_cell(0, 8, ", ".join(ee_names), 1, 'L', 1)
 
     return pdf.output(dest='S').encode('latin-1')
 
@@ -275,12 +297,12 @@ with st.sidebar:
         
         # PDF GENERATION BUTTON
         if st.button("📄 Generate PDF Report"):
-            with st.spinner("Generating Charts & Report..."):
+            with st.spinner("Generating Professional Report..."):
                 try:
                     pdf_bytes = generate_pdf_report(df)
-                    st.download_button("⬇️ Download PDF", data=pdf_bytes, file_name="Ops_Report.pdf", mime="application/pdf")
+                    st.download_button("⬇️ Download PDF", data=pdf_bytes, file_name="MAHAGENCO_Ops_Report.pdf", mime="application/pdf")
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"Error rendering PDF: {e}")
 
 # --- MAIN APP ---
 st.title("⚡ Operation Staff Dashboard")
