@@ -4,9 +4,15 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 import re
 from github import Github
-from fpdf import FPDF
 import io
 import tempfile
+
+# --- REPORTLAB IMPORTS (The Robust PDF Engine) ---
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Mahagenco Parli Ops", page_icon="⚡", layout="wide")
@@ -17,36 +23,12 @@ REPO_NAME = "Chinmay-Dev27/mahagenco-staffing-dashboard"
 st.markdown("""
 <style>
     .metric-card { background-color: #0E1117; border: 1px solid #30333F; border-radius: 10px; padding: 15px; text-align: center; }
-    .badge-vacant { background-color: #ff4b4b; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; }
-    .badge-transfer { background-color: #ffa421; color: black; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; }
-    .badge-active { background-color: #e6fffa; color: #047857; border: 1px solid #047857; padding: 4px 8px; border-radius: 4px; font-weight: 500; font-size: 0.85em; }
-    .card-container { background-color: #262730; padding: 15px; border-radius: 8px; border: 1px solid #444; margin-bottom: 10px; }
     .stButton>button { width: 100%; }
 </style>
 """, unsafe_allow_html=True)
 
 # --- SESSION STATE ---
 if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
-
-# --- PDF GENERATOR CLASS ---
-class PDF(FPDF):
-    def header(self):
-        self.set_font('Arial', 'B', 16)
-        self.set_text_color(44, 62, 80) # Dark Blue
-        self.cell(0, 10, 'MAHAGENCO Parli TPS - Operation Shift Report', 0, 1, 'C')
-        self.ln(2)
-        self.set_font('Arial', 'I', 9)
-        self.set_text_color(100, 100, 100)
-        self.cell(0, 5, f'Generated on: {pd.Timestamp.now().strftime("%d-%b-%Y %H:%M")}', 0, 1, 'C')
-        self.set_draw_color(180, 180, 180)
-        self.line(10, 28, 200, 28)
-        self.ln(10)
-
-    def footer(self):
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
-        self.set_text_color(150, 150, 150)
-        self.cell(0, 10, f'Page {self.page_no()} | Official Record', 0, 0, 'C')
 
 # --- DATA FUNCTIONS ---
 def update_github(df):
@@ -95,25 +77,24 @@ def create_chart_images(df):
     
     # 1. Pie Chart
     status_counts = op_df['Status'].value_counts()
-    fig1, ax1 = plt.subplots(figsize=(5, 4))
-    colors = {'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96', 'Long Leave':'#333333'}
+    fig1, ax1 = plt.subplots(figsize=(4, 3))
+    colors = {'VACANCY':'#D32F2F', 'Transferred':'#F57C00', 'Active':'#388E3C', 'Long Leave':'#333333'}
     pie_colors = [colors.get(x, '#999999') for x in status_counts.index]
-    ax1.pie(status_counts, labels=status_counts.index, autopct='%1.1f%%', startangle=90, colors=pie_colors, textprops={'fontsize': 9})
-    ax1.set_title('Overall Status', fontsize=11, fontweight='bold')
+    ax1.pie(status_counts, labels=status_counts.index, autopct='%1.1f%%', startangle=90, colors=pie_colors, textprops={'fontsize': 8})
+    ax1.set_title('Overall Status', fontsize=10, fontweight='bold')
     
     # 2. Bar Chart
     gaps = op_df[op_df['Status'].isin(['VACANCY', 'Transferred'])]
     if not gaps.empty:
         gap_counts = gaps.groupby(['Unit', 'Status']).size().unstack(fill_value=0)
-        fig2, ax2 = plt.subplots(figsize=(7, 4)) 
+        fig2, ax2 = plt.subplots(figsize=(5, 3))
         gap_counts.plot(kind='bar', stacked=False, color=[colors.get(x, 'red') for x in gap_counts.columns], ax=ax2)
-        ax2.set_title('Critical Gaps by Unit', fontsize=11, fontweight='bold')
-        ax2.tick_params(axis='x', rotation=0, labelsize=9)
-        ax2.set_xlabel('')
-        ax2.legend(title=None, fontsize=8)
+        ax2.set_title('Critical Gaps by Unit', fontsize=10, fontweight='bold')
+        ax2.tick_params(axis='x', rotation=0, labelsize=8)
+        ax2.legend(fontsize=7)
         plt.tight_layout()
     else:
-        fig2, ax2 = plt.subplots(figsize=(6, 4))
+        fig2, ax2 = plt.subplots(figsize=(5, 3))
         ax2.text(0.5, 0.5, "No Critical Gaps", ha='center', va='center')
         ax2.axis('off')
 
@@ -122,156 +103,142 @@ def create_chart_images(df):
         fig2.savefig(f2.name, format='png', dpi=100)
         return f1.name, f2.name
 
-# --- PDF REPORT GENERATION (Clean & Professional) ---
-def generate_pdf_report(df):
-    pdf = PDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
+# --- REPORTLAB PDF ENGINE (ROBUST LAYOUT) ---
+def generate_pdf_report_lab(df):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    story = []
     
-    # 1. DASHBOARD
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 8, "Executive Dashboard", 0, 1, 'L')
-    img1, img2 = create_chart_images(df)
-    y_start = pdf.get_y() + 2
-    pdf.image(img1, x=10, y=y_start, w=70)
-    pdf.image(img2, x=85, y=y_start, w=110)
-    pdf.ln(65)
+    # Styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=16, spaceAfter=10, textColor=colors.HexColor('#2c3e50'))
+    sub_style = ParagraphStyle('Sub', parent=styles['Normal'], alignment=TA_CENTER, fontSize=9, textColor=colors.gray)
+    
+    # 1. Header
+    story.append(Paragraph("MAHAGENCO Parli TPS - Operation Shift Report", title_style))
+    story.append(Paragraph(f"Official Record Generated on: {pd.Timestamp.now().strftime('%d-%b-%Y %H:%M')}", sub_style))
+    story.append(Spacer(1, 20))
+    
+    # 2. Dashboard Images
+    img1_path, img2_path = create_chart_images(df)
+    
+    # Create a table for side-by-side images
+    img1 = Image(img1_path, width=200, height=150)
+    img2 = Image(img2_path, width=250, height=150)
+    chart_data = [[img1, img2]]
+    chart_table = Table(chart_data, colWidths=[230, 280])
+    chart_table.setStyle(TableStyle([
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+    ]))
+    story.append(chart_table)
+    story.append(Spacer(1, 20))
 
-    # 2. METRICS
+    # 3. Metrics Summary
     op_df = df[df['Desk'] != 'Shift In-Charge']
     active = len(op_df[op_df['Status']=='Active'])
     vacant = len(op_df[op_df['Status']=='VACANCY'])
     transferred = len(op_df[op_df['Status']=='Transferred'])
     
-    pdf.set_fill_color(240, 240, 240)
-    pdf.set_font("Arial", '', 10)
-    pdf.cell(60, 10, f"Total Active: {active}", 1, 0, 'C', 1)
-    
-    pdf.set_text_color(200, 0, 0)
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(60, 10, f"Shortage: {vacant}", 1, 0, 'C', 1)
-    
-    pdf.set_text_color(200, 140, 0)
-    pdf.set_font("Arial", 'B', 10)
-    pdf.cell(60, 10, f"Transferred: {transferred}", 1, 1, 'C', 1)
-    pdf.ln(10)
+    metric_data = [[f"Total Active: {active}", f"Critical Shortage: {vacant}", f"Transferred (Risk): {transferred}"]]
+    metric_table = Table(metric_data, colWidths=[150, 150, 150])
+    metric_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#F5F7FA')),
+        ('BOX', (0,0), (-1,-1), 1, colors.silver),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('PADDING', (0,0), (-1,-1), 8),
+        ('TEXTCOLOR', (1,0), (1,0), colors.red), # Shortage Red
+        ('TEXTCOLOR', (2,0), (2,0), colors.orange), # Transfer Orange
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
+    ]))
+    story.append(metric_table)
+    story.append(Spacer(1, 20))
 
-    # 3. ROSTER MATRIX
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, "Operational Roster", 0, 1, 'L')
+    # 4. Roster Matrix
+    story.append(Paragraph("Operational Roster", styles['Heading2']))
     
-    # Table Header
-    pdf.set_font("Arial", 'B', 9)
-    pdf.set_fill_color(50, 50, 50)
-    pdf.set_text_color(255, 255, 255)
-    w_desk = 55
-    w_unit = 45
-    pdf.cell(w_desk, 8, "Position", 1, 0, 'C', 1)
     units = sorted(df['Unit'].unique())
-    for u in units:
-        pdf.cell(w_unit, 8, str(u), 1, 0, 'C', 1)
-    pdf.ln()
-    
-    # Table Body
-    pdf.set_text_color(0, 0, 0)
     desks_order = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 
                    'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
     
-    for desk in desks_order:
-        row_data = {}
-        max_lines = 1
-        
-        for u in units:
+    # Table Header
+    table_data = [['Position / Desk'] + [str(u) for u in units]]
+    
+    # Table Styling List (Will append dynamic styles)
+    table_styles = [
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,0), 9),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('BACKGROUND', (0,1), (0,-1), colors.HexColor('#EAEDED')), # Left header gray
+        ('FONTNAME', (0,1), (0,-1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 8),
+    ]
+
+    # Style for internal cell text
+    cell_style_normal = ParagraphStyle('Cell', fontSize=8, leading=10)
+    
+    for row_idx, desk in enumerate(desks_order, start=1):
+        row_content = [desk]
+        for col_idx, u in enumerate(units, start=1):
             matches = op_df[(op_df['Unit'] == u) & (op_df['Desk'] == desk)]
-            staff_list = []
+            
+            cell_text_parts = []
             has_vacant = False
             has_transfer = False
             
             if matches.empty:
-                txt = "-"
+                cell_text_parts.append("-")
             else:
                 for _, r in matches.iterrows():
                     nm = format_staff_name(r['Staff_Name'])
-                    st_flag = ""
-                    if r['Status'] == 'VACANCY': 
-                        # REMOVED LONG TEXT - Just "VACANT"
-                        nm = "VACANT"
+                    if r['Status'] == 'VACANCY':
+                        # Use Red Bold Text for Vacancy
+                        cell_text_parts.append(f"<font color='#D32F2F'><b>VACANT</b></font>")
                         has_vacant = True
-                    elif r['Status'] == 'Transferred': 
-                        st_flag = " [TRF]"
+                    elif r['Status'] == 'Transferred':
+                        # Use Orange Italic Text for Transfer
+                        cell_text_parts.append(f"<font color='#E65100'><i>{nm} [TRF]</i></font>")
                         has_transfer = True
-                    staff_list.append(f"{nm}{st_flag}")
-                txt = "\n".join(staff_list)
-                
-            row_data[u] = {'text': txt, 'vacant': has_vacant, 'transfer': has_transfer}
-            lines = txt.count('\n') + 1
-            if lines > max_lines: max_lines = lines
+                    else:
+                        cell_text_parts.append(nm)
             
-        h = max_lines * 5 + 4
-        if pdf.get_y() + h > 270: pdf.add_page()
-        
-        # Draw Desk
-        pdf.set_font("Arial", 'B', 8)
-        pdf.set_fill_color(230, 230, 230)
-        pdf.set_text_color(0,0,0)
-        x = pdf.get_x()
-        y = pdf.get_y()
-        pdf.multi_cell(w_desk, h, desk, 1, 'L', 1)
-        pdf.set_xy(x + w_desk, y)
-        
-        # Draw Units with Color
-        for u in units:
-            d = row_data[u]
+            # Combine text
+            full_text = "<br/>".join(cell_text_parts)
+            p = Paragraph(full_text, cell_style_normal)
+            row_content.append(p)
             
-            # COLOR LOGIC (PASTEL BACKGROUNDS)
-            bar_color = None
-            if d['vacant']:
-                pdf.set_fill_color(255, 235, 235) # Pastel Red
-                bar_color = (220, 50, 50)         # Red Bar
-            elif d['transfer']:
-                pdf.set_fill_color(255, 245, 220) # Pastel Orange
-                bar_color = (255, 165, 0)         # Orange Bar
-            else:
-                pdf.set_fill_color(255, 255, 255) # White
-                bar_color = None
+            # Apply Background Colors Logic
+            if has_vacant:
+                table_styles.append(('BACKGROUND', (col_idx, row_idx), (col_idx, row_idx), colors.HexColor('#FFEBEE'))) # Light Red
+            elif has_transfer:
+                table_styles.append(('BACKGROUND', (col_idx, row_idx), (col_idx, row_idx), colors.HexColor('#FFF3E0'))) # Light Orange
             
-            # Set Text Black for readability
-            pdf.set_text_color(0, 0, 0)
-            pdf.set_font("Arial", '', 8)
-                
-            x_curr = pdf.get_x()
-            y_curr = pdf.get_y()
-            
-            # Draw Cell
-            pdf.multi_cell(w_unit, 5, d['text'], 1, 'L', 1)
-            
-            # DRAW STATUS BAR (THE "BULB" EFFECT)
-            if bar_color:
-                pdf.set_fill_color(*bar_color)
-                # Draw a small 2mm wide rectangle on the left edge of the cell
-                pdf.rect(x_curr, y_curr, 2, h, 'F') 
-            
-            pdf.set_xy(x_curr + w_unit, y_curr)
-            
-        pdf.ln(h)
-
-    # Footer Names
-    pdf.ln(10)
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", 'B', 9)
-    pdf.cell(0, 6, "Shift In-Charge (EE):", 0, 1)
-    pdf.set_font("Arial", '', 9)
-    ee_names = [format_staff_name(x) for x in df[df['Desk']=='Shift In-Charge']['Staff_Name'].unique()]
-    pdf.multi_cell(0, 5, ", ".join(ee_names))
+        table_data.append(row_content)
     
-    # LEGEND
-    pdf.ln(5)
-    pdf.set_font("Arial", 'I', 8)
-    pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 5, "Legend: Red Bar = Vacancy | Orange Bar = Transferred | [TRF] = Transferred Status", 0, 1)
+    # Create Table Flowable
+    roster_table = Table(table_data, colWidths=[110, 130, 130, 130])
+    roster_table.setStyle(TableStyle(table_styles))
+    story.append(roster_table)
+    story.append(Spacer(1, 15))
+    
+    # 5. Shift In Charge Footer
+    story.append(Paragraph("Shift In-Charge (EE) On Duty:", styles['Heading4']))
+    ee_names = [format_staff_name(x) for x in df[df['Desk']=='Shift In-Charge']['Staff_Name'].unique()]
+    story.append(Paragraph(", ".join(ee_names), styles['Normal']))
+    
+    # 6. Legend
+    story.append(Spacer(1, 10))
+    legend_text = "<font color='#D32F2F'><b>Red Text/BG</b></font> = Vacancy | <font color='#E65100'><b>Orange Text/BG</b></font> = Transferred"
+    story.append(Paragraph(f"Legend: {legend_text}", ParagraphStyle('Leg', fontSize=8, textColor=colors.gray)))
 
-    return pdf.output(dest='S').encode('latin-1')
+    # Build
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
 
 df = load_data()
 
@@ -298,9 +265,9 @@ with st.sidebar:
         st.download_button("📥 Download CSV", data=csv_buffer, file_name="Parli_Staff.csv", mime="text/csv")
         
         if st.button("📄 Generate PDF Report"):
-            with st.spinner("Generating Professional Report..."):
+            with st.spinner("Generating Professional Report (ReportLab)..."):
                 try:
-                    pdf_bytes = generate_pdf_report(df)
+                    pdf_bytes = generate_pdf_report_lab(df)
                     st.download_button("⬇️ Download PDF", data=pdf_bytes, file_name="MAHAGENCO_Ops_Report.pdf", mime="application/pdf")
                 except Exception as e:
                     st.error(f"Error: {e}")
