@@ -1,4 +1,14 @@
 Unit,Desk,Staff_Name,Status,Action_Required,Original_Line
+Unit 6,Shift In-Charge,V.V. GAIDHANE EE,Active,,Common Pool
+Unit 6,Shift In-Charge,J.S. DUMNE EE,Active,,Common Pool
+Unit 6,Shift In-Charge,R.V. BHALE EE,Active,,Common Pool
+Unit 6,Shift In-Charge,S.B. PADOLE EE,Active,,Common Pool
+Unit 6,Shift In-Charge,P.S. DAGDE EE,Active,,Common Pool
+Unit 7,Shift In-Charge,V.V. GAIDHANE EE,Active,,Common Pool
+Unit 7,Shift In-Charge,J.S. DUMNE EE,Active,,Common Pool
+Unit 7,Shift In-Charge,R.V. BHALE EE,Active,,Common Pool
+Unit 7,Shift In-Charge,S.B. PADOLE EE,Active,,Common Pool
+Unit 7,Shift In-Charge,P.S. DAGDE EE,Active,,Common Pool
 Unit 6,PCR In-Charge,A.M. PARVAT Ad.EE,Transferred,Need Replacement,A.M. PARVAT Ad.EE
 Unit 6,PCR In-Charge,B.G. MESHRAM Ad.EE,Active,,B.G. MESHRAM Ad.EE
 Unit 6,PCR In-Charge,A.B. CHAPTE Ad.EE,Active,,A.B. CHAPTE Ad.EE
@@ -49,7 +59,7 @@ Unit 6,Drum Level Desk,J.S. SURYAWANSHI AE (Transferred),Transferred,Verify Repl
 Unit 6,Drum Level Desk,S.R. INGALE DY.EE,Active,,S.R. INGALE DY.EE
 Unit 6,Drum Level Desk,S.G. PAWAR AE,Active,,S.G. PAWAR AE
 Unit 6,Drum Level Desk,VACANT POSITION,VACANCY,Immediate Deployment,⚠️ VACANT
-Unit 7,Drum Level Desk,VACANT POSITION,VACANCY,Immediate Deployment,P.A. HUNMANTE AE (Transferred)
+Unit 7,Drum Level Desk,VACANT POSITION,VACANCY,Immediate Deployment,P.A. HUNMANTE Moved to BAPI
 Unit 7,Drum Level Desk,R.A. PETHE DY.EE,Active,,R.A. PETHE DY.EE
 Unit 7,Drum Level Desk,A.J. PATTANKUDE DY.EE,Active,,A.J. PATTANKUDE DY.EE
 Unit 7,Drum Level Desk,S.S. KOHALE DY.EE,Active,,S.S. KOHALE DY.EE
@@ -66,7 +76,7 @@ Unit 6,Boiler API (BAPI),M. SIDIQUI JE,Active,,M. SIDIQUI JE
 Unit 7,Boiler API (BAPI),S M Lute(Transferred),Transferred,Verify Replacement,S M Lute(Transferred)
 Unit 7,Boiler API (BAPI),S.E.Gitte,Active,,S.E.Gitte
 Unit 7,Boiler API (BAPI),N K Jadhav,Active,,N K Jadhav
-Unit 7,Boiler API (BAPI),P.A Hanumante,Transferred,,⚠️ VACANT
+Unit 7,Boiler API (BAPI),P.A. Hanumante,Active,,Moved from Drum Level
 Unit 8,Boiler API (BAPI),S S Padkantwar,Active,,S S Padkantwar
 Unit 8,Boiler API (BAPI),C R Guddewadi,Active,,C R Guddewadi
 Unit 8,Boiler API (BAPI),K S Dhopte,Active,,K S Dhopte
