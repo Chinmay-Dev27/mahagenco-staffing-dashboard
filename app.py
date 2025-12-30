@@ -37,14 +37,14 @@ st.markdown("""
     
     /* Hierarchy Tree Styles */
     .rank-box { 
-        padding: 10px; margin: 5px 0; border-radius: 8px; text-align: center; color: white; font-weight: bold;
+        padding: 8px; margin: 4px 0; border-radius: 6px; text-align: center; color: white; font-weight: bold; font-size: 0.9em;
     }
-    .rank-ee { background-color: #1e3a8a; border-left: 5px solid #60a5fa; } /* Dark Blue */
-    .rank-ad { background-color: #1e40af; border-left: 5px solid #93c5fd; margin-left: 20px; }
-    .rank-dy { background-color: #1d4ed8; border-left: 5px solid #bfdbfe; margin-left: 40px; }
-    .rank-ae { background-color: #2563eb; border-left: 5px solid #dbeafe; margin-left: 60px; }
-    .rank-je { background-color: #3b82f6; border-left: 5px solid #eff6ff; margin-left: 80px; }
-    .connector { color: #aaa; font-size: 1.2em; margin-left: 50px; }
+    .rank-ee { background-color: #1e3a8a; border-left: 5px solid #60a5fa; } 
+    .rank-ad { background-color: #1e40af; border-left: 5px solid #93c5fd; margin-left: 15px; }
+    .rank-dy { background-color: #1d4ed8; border-left: 5px solid #bfdbfe; margin-left: 30px; }
+    .rank-ae { background-color: #2563eb; border-left: 5px solid #dbeafe; margin-left: 45px; }
+    .rank-je { background-color: #3b82f6; border-left: 5px solid #eff6ff; margin-left: 60px; }
+    .connector { color: #aaa; font-size: 1.0em; margin-left: 40px; margin-top:-5px; margin-bottom:-5px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -99,15 +99,14 @@ def format_staff_name(raw_name, desg=""):
 
 # --- HIERARCHY LOGIC ---
 def get_rank_level(desg):
-    """Returns a numeric rank for sorting (1=Highest)"""
     d = str(desg).upper().replace('.', '').strip()
     if 'EXECUTIVE' in d or 'EE' in d:
-        if 'ADD' in d or 'AD' in d: return 2  # Add. EE
-        if 'DY' in d: return 3   # Dy. EE
-        if d == 'EE' or d == 'EXECUTIVE ENGINEER': return 1 # EE
-    if 'AE' in d or 'ASSISTANT' in d: return 4 # AE
-    if 'JE' in d or 'JUNIOR' in d: return 5 # JE
-    return 6 # Other
+        if 'ADD' in d or 'AD' in d: return 2
+        if 'DY' in d: return 3
+        if d == 'EE' or d == 'EXECUTIVE ENGINEER': return 1
+    if 'AE' in d or 'ASSISTANT' in d: return 4
+    if 'JE' in d or 'JUNIOR' in d: return 5
+    return 6
 
 # --- CHART GENERATORS ---
 def create_dashboard_charts(df, mode="Ops", filter_val=None):
@@ -210,7 +209,6 @@ def generate_pdf_report_lab(df, mode="Ops", filter_val=None):
         main_table.setStyle(TableStyle(t_style))
         story.append(main_table)
     elif not df.empty:
-        # Departmental List
         working_df = df
         if filter_val and filter_val != "All":
             working_df = df[df['Department'] == filter_val]
@@ -219,7 +217,6 @@ def generate_pdf_report_lab(df, mode="Ops", filter_val=None):
         for dept in depts:
             story.append(Paragraph(f"<b>{dept}</b>", styles['Heading3']))
             d_df = working_df[working_df['Department'] == dept].copy()
-            # Sort PDF by rank too
             d_df['Rank'] = d_df['Designation'].apply(get_rank_level)
             d_df = d_df.sort_values('Rank')
             
@@ -262,7 +259,6 @@ tab1, tab2, tab3 = st.tabs(["📊 Dashboard & Roster", "🔍 Search & Reports", 
 
 with tab1:
     if view_mode == VIEW_OPS:
-        # OPS DASHBOARD
         if ops_df.empty or 'Desk' not in ops_df.columns:
             st.error(f"Data Missing. Check {OPS_FILE}")
         else:
@@ -292,7 +288,6 @@ with tab1:
                 m1.metric("Shortage", len(op_df[op_df['Status']=='VACANCY']))
                 m2.metric("Transferred", len(op_df[op_df['Status']=='Transferred']))
 
-            # Roster Table
             def agg_staff_html(x):
                 html = []
                 for _, row in x.iterrows():
@@ -314,7 +309,6 @@ with tab1:
             st.write(pd.DataFrame(table_data).to_html(escape=False, index=False, classes="table table-bordered"), unsafe_allow_html=True)
 
     else:
-        # DEPT DASHBOARD
         if dept_df.empty:
             st.error(f"Data Missing. Check {DEPT_FILE}")
         else:
@@ -330,12 +324,8 @@ with tab1:
                 st.plotly_chart(fig2, use_container_width=True)
             
             st.divider()
-            
-            # --- HIERARCHY TREE VIEW ---
             if selected_dept != "All":
                 st.subheader(f"🏛️ Hierarchy: {selected_dept}")
-                
-                # Assign Rank
                 active_df['Rank'] = active_df['Designation'].apply(get_rank_level)
                 sorted_staff = active_df.sort_values(by='Rank')
                 
@@ -346,16 +336,12 @@ with tab1:
                                5: ("🛠️ Junior Engineer (JE)", "rank-je"),
                                6: ("📋 Other Staff", "rank-je")}
                 
-                # Display Groups
                 for rank in range(1, 7):
                     group = sorted_staff[sorted_staff['Rank'] == rank]
                     if not group.empty:
                         label, css_class = rank_labels[rank]
                         if rank > 1: st.markdown(f'<div class="connector">⬇</div>', unsafe_allow_html=True)
-                        
                         st.markdown(f'<div class="rank-box {css_class}">{label}</div>', unsafe_allow_html=True)
-                        
-                        # List staff in this rank
                         cols = st.columns(3)
                         for i, (_, row) in enumerate(group.iterrows()):
                             name = format_staff_name(row['Staff_Name'])
@@ -367,7 +353,6 @@ with tab1:
 with tab2:
     st.header("Search")
     search_term = st.text_input("Enter Name")
-    
     combined_search = pd.DataFrame()
     if not ops_df.empty: combined_search = pd.concat([combined_search, ops_df.assign(Source='Ops')])
     if not dept_df.empty: combined_search = pd.concat([combined_search, dept_df.assign(Source='Dept')])
@@ -400,6 +385,8 @@ with tab3:
             st.error("Cannot edit empty dataset.")
         else:
             act = st.selectbox("Action", ["Change Status", "Add Person"])
+            
+            # --- ACTION: CHANGE STATUS ---
             if act == "Change Status":
                 if view_mode == VIEW_OPS:
                     u = st.selectbox("Unit", working_df['Unit'].unique())
@@ -412,7 +399,7 @@ with tab3:
                 if not p_list.empty:
                     p = st.selectbox("Person", p_list['Staff_Name'].unique())
                     s = st.selectbox("New Status", ["Active", "Transferred", "VACANCY"])
-                    if st.button("Update"):
+                    if st.button("Update Status"):
                         idx = p_list[p_list['Staff_Name']==p].index[0]
                         working_df.at[idx,'Status'] = s
                         if s=='VACANCY': working_df.at[idx,'Staff_Name']="VACANT"
@@ -420,6 +407,56 @@ with tab3:
                         update_github(working_df, target_file)
                         st.success("Updated!")
                         st.rerun()
+            
+            # --- ACTION: ADD PERSON ---
+            elif act == "Add Person":
+                st.subheader("Add New Staff Member")
+                if view_mode == VIEW_DEPT:
+                    # Form for Departmental Staff
+                    c1, c2 = st.columns(2)
+                    new_dept = c1.selectbox("Select Department", sorted(working_df['Department'].unique()))
+                    new_name = c2.text_input("Full Name")
+                    
+                    c3, c4 = st.columns(2)
+                    new_desg = c3.selectbox("Designation", ["EE", "AD.EE", "DY.EE", "AE", "JE", "Other"])
+                    new_sap = c4.text_input("SAP ID (Optional)")
+                    
+                    if st.button("Add to Department"):
+                        if new_name:
+                            new_row = {"Department": new_dept, "Staff_Name": new_name, "Designation": new_desg, "SAP_ID": new_sap, "Status": "Active", "Action_Required": ""}
+                            working_df = pd.concat([working_df, pd.DataFrame([new_row])], ignore_index=True)
+                            save_local(working_df, target_file)
+                            update_github(working_df, target_file)
+                            st.success(f"Added {new_name} to {new_dept}")
+                            st.rerun()
+                        else:
+                            st.error("Name is required.")
+                            
+                else:
+                    # Form for Shift Operations (Ops)
+                    c1, c2 = st.columns(2)
+                    new_unit = c1.selectbox("Unit", ["Unit 6", "Unit 7", "Unit 8"])
+                    new_desk = c2.selectbox("Desk", working_df['Desk'].unique())
+                    new_name = st.text_input("Staff Name")
+                    
+                    if st.button("Add to Roster"):
+                        if new_name:
+                            # Check if seat is vacant to replace, else append
+                            vac_check = working_df[(working_df['Unit']==new_unit) & (working_df['Desk']==new_desk) & (working_df['Status']=='VACANCY')]
+                            if not vac_check.empty:
+                                idx = vac_check.index[0]
+                                working_df.at[idx, 'Staff_Name'] = new_name
+                                working_df.at[idx, 'Status'] = "Active"
+                            else:
+                                new_row = {"Unit": new_unit, "Desk": new_desk, "Staff_Name": new_name, "Status": "Active", "Action_Required": ""}
+                                working_df = pd.concat([working_df, pd.DataFrame([new_row])], ignore_index=True)
+                            
+                            save_local(working_df, target_file)
+                            update_github(working_df, target_file)
+                            st.success(f"Added {new_name} to {new_desk}")
+                            st.rerun()
+                        else:
+                            st.error("Name is required.")
 
 with st.sidebar:
     st.title("Report")
