@@ -29,9 +29,6 @@ st.markdown("""
     .badge-transfer { background-color: #ffa421; color: black; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; display: inline-block; margin-bottom: 2px;}
     .badge-active { background-color: #e6fffa; color: #047857; border: 1px solid #047857; padding: 4px 8px; border-radius: 4px; font-weight: 500; font-size: 0.85em; display: inline-block; margin-bottom: 2px;}
     .stButton>button { width: 100%; }
-    
-    /* Highlight the view switcher */
-    div[data-testid="stRadio"] > label { font-size: 1.2rem; font-weight: bold; color: #4facfe; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -73,29 +70,29 @@ def format_staff_name(raw_name, desg=""):
     if "VACANT" in str(raw_name): return "VACANT"
     clean = re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', str(raw_name), flags=re.IGNORECASE).strip()
     
-    # Auto-add designation if not present
     if desg and str(desg).strip() and str(desg).lower() not in clean.lower():
         clean = f"{clean} ({desg})"
     elif not desg:
         pattern = r'\s+(JE|AE|DY\.? ?EE|ADD\.? ?EE|AD\.? ?EE|EE)\b'
         match = re.search(pattern, clean, flags=re.IGNORECASE)
         if match: clean = f"{clean[:match.start()].strip()} ({match.group(1)})"
-            
     return clean
 
 # --- CHART GENERATORS ---
-def create_dashboard_charts(df, mode="Ops"):
-    op_df = df[df['Desk'] != 'Shift In-Charge'] if mode == "Ops" else df
+def create_dashboard_charts(df, mode="Ops", filter_val=None):
+    op_df = df
+    if mode == "Ops":
+        op_df = df[df['Desk'] != 'Shift In-Charge']
+    elif filter_val and filter_val != "All":
+        op_df = df[df['Department'] == filter_val]
     
-    # 1. Pie Chart
     fig1, ax1 = plt.subplots(figsize=(4, 3))
     status_counts = op_df['Status'].value_counts()
     colors_map = {'VACANCY':'#D32F2F', 'Transferred':'#F57C00', 'Active':'#388E3C'}
     pie_cols = [colors_map.get(x, '#999') for x in status_counts.index]
     ax1.pie(status_counts, labels=status_counts.index, autopct='%1.1f%%', colors=pie_cols, startangle=90)
-    ax1.set_title('Overall Status', fontsize=10, fontweight='bold')
+    ax1.set_title('Status Distribution', fontsize=10, fontweight='bold')
     
-    # 2. Bar Chart
     fig2, ax2 = plt.subplots(figsize=(5, 3))
     if mode == "Ops":
         gaps = op_df[op_df['Status'].isin(['VACANCY', 'Transferred'])]
@@ -107,11 +104,12 @@ def create_dashboard_charts(df, mode="Ops"):
             ax2.text(0.5, 0.5, "No Critical Gaps", ha='center', va='center')
             ax2.axis('off')
     else:
-        # Dept Strength
-        dept_counts = op_df['Department'].value_counts().head(7)
-        dept_counts.plot(kind='bar', color='#2c3e50', ax=ax2)
-        ax2.set_title('Staff Strength by Dept', fontsize=10, fontweight='bold')
-        ax2.tick_params(axis='x', rotation=45, labelsize=8)
+        # Dept Designation Split
+        if 'Designation' in op_df.columns:
+            desg_counts = op_df['Designation'].value_counts().head(5)
+            desg_counts.plot(kind='bar', color='#2c3e50', ax=ax2)
+            ax2.set_title('Top Designations', fontsize=10, fontweight='bold')
+            ax2.tick_params(axis='x', rotation=45, labelsize=8)
 
     f1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
     f2 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
@@ -133,25 +131,27 @@ def draw_orange_flag():
     return d
 
 # --- PDF ENGINE ---
-def generate_pdf_report_lab(df, mode="Ops"):
+def generate_pdf_report_lab(df, mode="Ops", filter_val=None):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
     story = []
     styles = getSampleStyleSheet()
     
     title_text = "Shift Operations Report" if mode == "Ops" else "Departmental Staff List"
+    if filter_val and filter_val != "All": title_text += f" - {filter_val}"
+    
     story.append(Paragraph(f"MAHAGENCO Parli TPS - {title_text}", styles['Title']))
     story.append(Paragraph(f"Generated: {pd.Timestamp.now().strftime('%d-%b-%Y %H:%M')}", styles['Normal']))
     story.append(Spacer(1, 15))
 
-    chart1, chart2 = create_dashboard_charts(df, mode)
+    chart1, chart2 = create_dashboard_charts(df, mode, filter_val)
     img1 = Image(chart1, width=200, height=150)
     img2 = Image(chart2, width=250, height=150)
     story.append(Table([[img1, img2]], colWidths=[250, 250]))
     story.append(Spacer(1, 20))
 
     if mode == "Ops":
-        # Matrix Table Code (Preserved from previous correct version)
+        # Matrix Table Code
         units = sorted(df['Unit'].unique())
         desks = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
         data = [['Position'] + units]
@@ -178,10 +178,14 @@ def generate_pdf_report_lab(df, mode="Ops"):
         story.append(main_table)
     else:
         # Departmental List
-        depts = sorted(df['Department'].unique())
+        working_df = df
+        if filter_val and filter_val != "All":
+            working_df = df[df['Department'] == filter_val]
+            
+        depts = sorted(working_df['Department'].unique())
         for dept in depts:
             story.append(Paragraph(f"<b>{dept}</b>", styles['Heading3']))
-            d_df = df[df['Department'] == dept]
+            d_df = working_df[working_df['Department'] == dept]
             d_data = [['Name', 'Designation', 'SAP ID', 'Status']]
             for _, r in d_df.iterrows():
                 stat = r['Status']
@@ -208,9 +212,17 @@ dept_df = load_data(DEPT_FILE)
 # --- HEADER & NAVIGATION ---
 st.title("⚡ Mahagenco Staffing Portal")
 
-# TOP-LEVEL NAVIGATION (Front Page Visibility)
+# TOP-LEVEL NAVIGATION
 view_mode = st.radio("", ["Shift Operations", "Departmental Staff"], horizontal=True, label_visibility="collapsed")
 active_df = ops_df if view_mode == "Shift Operations" else dept_df
+
+# Filter for Departmental View
+selected_dept = "All"
+if view_mode == "Departmental Staff":
+    depts = ["All"] + sorted(dept_df['Department'].unique().tolist())
+    selected_dept = st.selectbox("Filter Department:", depts)
+    if selected_dept != "All":
+        active_df = active_df[active_df['Department'] == selected_dept]
 
 st.markdown("---")
 
@@ -270,25 +282,32 @@ with tab1:
         # DEPT DASHBOARD
         c1, c2 = st.columns([2, 1])
         with c1:
-            dept_counts = dept_df['Department'].value_counts().reset_index()
+            dept_counts = active_df['Department'].value_counts().reset_index()
             dept_counts.columns = ['Department', 'Count']
             fig = px.bar(dept_counts, x='Department', y='Count', text_auto=True, color='Count', title="Department Strength")
             st.plotly_chart(fig, use_container_width=True)
         with c2:
-            desg_counts = dept_df['Designation'].value_counts().head(5).reset_index()
+            desg_counts = active_df['Designation'].value_counts().head(5).reset_index()
             fig2 = px.pie(desg_counts, values='count', names='Designation', hole=0.4, title="Top Designations")
             st.plotly_chart(fig2, use_container_width=True)
             
-        st.dataframe(dept_df, use_container_width=True, hide_index=True)
+        st.dataframe(active_df, use_container_width=True, hide_index=True)
 
 with tab2:
     st.header("Search")
     search_term = st.text_input("Enter Name")
-    if search_term and not active_df.empty:
-        res = active_df[active_df['Staff_Name'].str.contains(search_term, case=False, na=False)]
+    
+    # Combined search
+    combined_search = pd.concat([ops_df.assign(Source='Ops'), dept_df.assign(Source='Dept')])
+    
+    if search_term:
+        res = combined_search[combined_search['Staff_Name'].str.contains(search_term, case=False, na=False)]
         if not res.empty:
             for _, r in res.iterrows():
-                loc = f"{r['Unit']} - {r['Desk']}" if view_mode == "Shift Operations" else f"{r['Department']}"
+                if r['Source'] == 'Ops':
+                    loc = f"{r['Unit']} - {r['Desk']}" 
+                else:
+                    loc = f"{r['Department']} ({r['Designation']})"
                 st.info(f"**{format_staff_name(r['Staff_Name'])}** | {loc} | {r['Status']}")
         else: st.warning("No match")
 
@@ -335,5 +354,5 @@ with st.sidebar:
     st.title("Report")
     if st.button("📄 Generate PDF"):
         with st.spinner("Generating..."):
-            pdf_bytes = generate_pdf_report_lab(active_df, mode="Ops" if view_mode=="Shift Operations" else "Dept")
+            pdf_bytes = generate_pdf_report_lab(active_df, mode="Ops" if view_mode=="Shift Operations" else "Dept", filter_val=selected_dept)
             st.download_button("⬇️ Download PDF", pdf_bytes, "Report.pdf", "application/pdf")
