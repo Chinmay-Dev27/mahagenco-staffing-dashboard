@@ -1,1 +1,95 @@
-defb5cd6d25bd0a1409c29a0184355f1e6a98877
+Unit,Desk,Staff_Name,Status,Action_Required,Original_Line
+Unit 6,Shift In-Charge,V.V. GAIDHANE EE,Active,,Common Pool
+Unit 6,Shift In-Charge,J.S. DUMNE EE,Active,,Common Pool
+Unit 6,Shift In-Charge,R.V. BHALE EE,Active,,Common Pool
+Unit 6,Shift In-Charge,S.B. PADOLE EE,Active,,Common Pool
+Unit 6,Shift In-Charge,P.S. DAGDE EE,Active,,Common Pool
+Unit 7,Shift In-Charge,V.V. GAIDHANE EE,Active,,Common Pool
+Unit 7,Shift In-Charge,J.S. DUMNE EE,Active,,Common Pool
+Unit 7,Shift In-Charge,R.V. BHALE EE,Active,,Common Pool
+Unit 7,Shift In-Charge,S.B. PADOLE EE,Active,,Common Pool
+Unit 7,Shift In-Charge,P.S. DAGDE EE,Active,,Common Pool
+Unit 6,PCR In-Charge,A.M. PARVAT Add EE,Transferred,Staffing Action Required,A.M. PARVAT Ad.EE
+Unit 6,PCR In-Charge,B.G. MESHRAM Ad.EE,Active,,B.G. MESHRAM Ad.EE
+Unit 6,PCR In-Charge,A.B. CHAPTE Ad.EE,Active,,A.B. CHAPTE Ad.EE
+Unit 6,PCR In-Charge,S.P. KALE Add EE,Active,,S.P. KALE ADD.E.E.
+Unit 6,PCR In-Charge,VACANT POSITION,VACANCY,Manpower Shortage,⚠️ VACANT
+Unit 7,PCR In-Charge,S.K. MUDE Add.EE,Active,,S.K. MUDE Add.EE
+Unit 7,PCR In-Charge,V.A. NAIKWADE Add.EE,Active,,V.A. NAIKWADE Add.EE
+Unit 7,PCR In-Charge,T.D. PATIL Add EE,Active,,T.D. PATIL DY.EE
+Unit 7,PCR In-Charge,A.N. GHATE Add.EE,Active,,A.N. GHATE Add.EE
+Unit 7,PCR In-Charge,R.D. AGHAV Add.EE,Active,,R.D. AGHAV Add.EE
+Unit 8,PCR In-Charge,Ajit Patil (Add.EE),Active,,Ajit Patil
+Unit 8,PCR In-Charge,S.Malphedhwar (Add.EE),Active,,S.Malphedhwar
+Unit 8,PCR In-Charge,B.M.Sirsath (Add.EE),Active,,B.M.Sirsath
+Unit 8,PCR In-Charge,Jabbar Shaikh (Add.EE),Active,,Jabbar Shaikh
+Unit 8,PCR In-Charge,A.Gadekar (Add.EE),Active,,A.Gadekar
+Unit 6,Boiler Control Desk,A.G. THOMBRE DY.EE,Active,,A.G. THOMBRE DY.EE
+Unit 6,Boiler Control Desk,V.M. HAJARE AE,Active,,V.M. HAJARE AE
+Unit 6,Boiler Control Desk,S.P. GAIKWAD DY.EE,Active,,S.P. GAIKWAD DY.EE
+Unit 6,Boiler Control Desk,M.Z. SHAIKH DY.EE,Active,,M.Z. SHAIKH DY.EE
+Unit 6,Boiler Control Desk,D.S. GIRI DY.EE,Active,,D.S. GIRI DY.EE
+Unit 7,Boiler Control Desk,V.S. THORAT DY.EE,Active,,V.S. THORAT DY.EE
+Unit 7,Boiler Control Desk,A.D. JADHAV AE,Active,,A.D. JADHAV AE
+Unit 7,Boiler Control Desk,V.S. SHINDE AE,Active,,V.S. SHINDE AE
+Unit 7,Boiler Control Desk,A.P. PATURDE DY.EE,Active,,A.P. PATURDE DY.EE
+Unit 7,Boiler Control Desk,A.R. YADAV DY.EE,Active,,A.R. YADAV DY.EE
+Unit 8,Boiler Control Desk,Nitin Shete,Active,,Nitin Shete
+Unit 8,Boiler Control Desk,Gadle,Active,,Gadle
+Unit 8,Boiler Control Desk,Raj Balvant,Active,,Raj Balvant
+Unit 8,Boiler Control Desk,Nilesh Chotve,Active,,Nilesh Chotve
+Unit 8,Boiler Control Desk,Prajesh Hatte,Active,,Prajesh Hatte
+Unit 6,Turbine Control Desk,P.S. PAL DY.EE,Active,,P.S. PAL DY.EE
+Unit 6,Turbine Control Desk,N.P. CHAVAN AE,Active,,N.P. CHAVAN AE
+Unit 6,Turbine Control Desk,S.S. SANGLE DY.EE,Active,,S.S. SANGLE DY.EE
+Unit 6,Turbine Control Desk,C.K. APRE DY.EE,Active,,C.K. APRE DY.EE
+Unit 6,Turbine Control Desk,VACANT POSITION,VACANCY,Manpower Shortage,⚠️ VACANT
+Unit 7,Turbine Control Desk,S.S. RANE AE,Active,,S.S. RANE
+Unit 7,Turbine Control Desk,J.S. MATALE DyEE,Active,,J.S. MATALE
+Unit 7,Turbine Control Desk,S.S. KAPAWAR DyEE,Active,,S.S. KAPAWAR
+Unit 7,Turbine Control Desk,P.G. PANCHAL DyEE,Transferred,Staffing Action Required,P.G. PANCHAL (Transferred)
+Unit 7,Turbine Control Desk,VACANT POSITION,VACANCY,Manpower Shortage,⚠️ VACANT
+Unit 8,Turbine Control Desk,N.Giripunje,Active,,N.Giripunje
+Unit 8,Turbine Control Desk,Prayag Mangesh,Active,,Prayag Mangesh
+Unit 8,Turbine Control Desk,Bhaskar Tarse,Active,,Bhaskar Tarse
+Unit 8,Turbine Control Desk,Ranjit Pokle,Active,,Ranjit Pokle
+Unit 8,Turbine Control Desk,Ravi Bhalerao,Active,,Ravi Bhalerao
+Unit 6,Drum Level Desk,S.S. INGLE DY.EE,Active,,S.S. INGLE DY.EE
+Unit 6,Drum Level Desk,J.S. SURYAWANSHI AE (Transferred),Transferred,Verify Replacement,J.S. SURYAWANSHI AE (Transferred)
+Unit 6,Drum Level Desk,S.R. INGALE DY.EE,Active,,S.R. INGALE DY.EE
+Unit 6,Drum Level Desk,S.G. PAWAR AE,Active,,S.G. PAWAR AE
+Unit 6,Drum Level Desk,VACANT POSITION,VACANCY,Manpower Shortage,⚠️ VACANT
+Unit 7,Drum Level Desk,VACANT POSITION,VACANCY,Manpower Shortage,P.A. HUNMANTE Moved to BAPI
+Unit 7,Drum Level Desk,R.A. PETHE DY.EE,Active,,R.A. PETHE DY.EE
+Unit 7,Drum Level Desk,A.J. PATTANKUDE DY.EE,Active,,A.J. PATTANKUDE DY.EE
+Unit 7,Drum Level Desk,S.S. KOHALE DY.EE,Active,,S.S. KOHALE DY.EE
+Unit 7,Drum Level Desk,M.B. BHOSLE AE,Active,,M.B. BHOSLE
+Unit 8,Drum Level Desk,Pawan Rokde,Active,,Pawan Rokde
+Unit 8,Drum Level Desk,Balaji Kangaonkar,Active,,Balaji Kangaonkar
+Unit 8,Drum Level Desk,Sontakke Sunil,Active,,Sontakke Sunil
+Unit 8,Drum Level Desk,Salegaokar S.,Active,,Salegaokar S.
+Unit 8,Drum Level Desk,Sandeep Gaikwad (Add.E.E.),Active,,Sandeep Gaikwad (Add.E.E.)
+Unit 6,Boiler API (BAPI),K.R. JADHAV AE,Active,,K.R. JADHAV AE
+Unit 6,Boiler API (BAPI),G.B. AKOLE AE,Active,,G.B. AKOLE AE
+Unit 6,Boiler API (BAPI),S.S. PATIL JE,Active,,S.S. PATIL JE
+Unit 6,Boiler API (BAPI),M. SIDIQUI JE,Active,,M. SIDIQUI JE
+Unit 7,Boiler API (BAPI),S M Lute AE,Transferred,Verify Replacement,S M Lute(Transferred)
+Unit 7,Boiler API (BAPI),S.E.Gitte AE,Active,,S.E.Gitte
+Unit 7,Boiler API (BAPI),N K Jadhav JE,Active,,N K Jadhav
+Unit 7,Boiler API (BAPI),P.A. Hanumante AE,Transferred,,Moved from Drum Level
+Unit 8,Boiler API (BAPI),S S Padkantwar,Active,,S S Padkantwar
+Unit 8,Boiler API (BAPI),C R Guddewadi,Active,,C R Guddewadi
+Unit 8,Boiler API (BAPI),K S Dhopte,Active,,K S Dhopte
+Unit 8,Boiler API (BAPI),S S Thosar,Active,,S S Thosar
+Unit 6,Turbine API (TAPI),V.M. WASNIK AE,Active,,V.M. WASNIK AE
+Unit 6,Turbine API (TAPI),K.J. KUMBHAR AE,Active,,K.J. KUMBHAR AE
+Unit 6,Turbine API (TAPI),S.D. BURANDE AE,Active,,S.D. BURANDE AE
+Unit 6,Turbine API (TAPI),S.M. LOKANDE JE,Active,,S.M. LOKANDE JE
+Unit 7,Turbine API (TAPI),S A Kulkarni AE,Active,,S A Kulkarni
+Unit 7,Turbine API (TAPI),S L Sarwade AE,Active,,S L Sarwade
+Unit 7,Turbine API (TAPI),A.S.Khot AE,Active,,A.S.Khot
+Unit 7,Turbine API (TAPI),P R Thakre JE,Active,,P R Thakre
+Unit 8,Turbine API (TAPI),A.L.Dongade,Active,,A.L.Dongade
+Unit 8,Turbine API (TAPI),S U Chatrubhuj,Active,,S U Chatrubhuj
+Unit 8,Turbine API (TAPI),S.H.Shaikh,Active,,S.H.Shaikh
+Unit 8,Turbine API (TAPI),L.G.Kale,Active,,L.G.Kale
