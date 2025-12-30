@@ -21,6 +21,10 @@ OPS_FILE = 'stitched_staffing_data.csv'
 DEPT_FILE = 'departmental_staffing_data.csv'
 REPO_NAME = "Chinmay-Dev27/mahagenco-staffing-dashboard"
 
+# --- NAMES FOR VIEWS ---
+VIEW_OPS = "PCR Shift Operation (Main Plant)"
+VIEW_DEPT = "Departmental Staff"
+
 # --- CUSTOM CSS ---
 st.markdown("""
 <style>
@@ -29,7 +33,18 @@ st.markdown("""
     .badge-transfer { background-color: #ffa421; color: black; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; display: inline-block; margin-bottom: 2px;}
     .badge-active { background-color: #e6fffa; color: #047857; border: 1px solid #047857; padding: 4px 8px; border-radius: 4px; font-weight: 500; font-size: 0.85em; display: inline-block; margin-bottom: 2px;}
     .stButton>button { width: 100%; }
-    div[data-testid="stRadio"] > label { font-size: 1.2rem; font-weight: bold; color: #4facfe; }
+    div[data-testid="stRadio"] > label { font-size: 1.1rem; font-weight: bold; color: #4facfe; }
+    
+    /* Hierarchy Tree Styles */
+    .rank-box { 
+        padding: 10px; margin: 5px 0; border-radius: 8px; text-align: center; color: white; font-weight: bold;
+    }
+    .rank-ee { background-color: #1e3a8a; border-left: 5px solid #60a5fa; } /* Dark Blue */
+    .rank-ad { background-color: #1e40af; border-left: 5px solid #93c5fd; margin-left: 20px; }
+    .rank-dy { background-color: #1d4ed8; border-left: 5px solid #bfdbfe; margin-left: 40px; }
+    .rank-ae { background-color: #2563eb; border-left: 5px solid #dbeafe; margin-left: 60px; }
+    .rank-je { background-color: #3b82f6; border-left: 5px solid #eff6ff; margin-left: 80px; }
+    .connector { color: #aaa; font-size: 1.2em; margin-left: 50px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -56,15 +71,15 @@ def update_github(df, filename):
 def load_data(filename):
     try:
         df = pd.read_csv(filename)
+        if filename == OPS_FILE and 'Desk' not in df.columns:
+             return pd.DataFrame(columns=['Unit', 'Desk', 'Staff_Name', 'Status', 'Action_Required'])
+        
         if 'Status' not in df.columns: df['Status'] = 'Active'
         if 'Action_Required' not in df.columns: df['Action_Required'] = ''
         return df.fillna("")
     except:
-        # Fallback: Return empty DF with correct columns to prevent KeyError
-        if filename == DEPT_FILE: 
-            return pd.DataFrame(columns=['Department', 'Staff_Name', 'Designation', 'SAP_ID', 'Status', 'Action_Required'])
-        elif filename == OPS_FILE:
-            return pd.DataFrame(columns=['Unit', 'Desk', 'Staff_Name', 'Status', 'Action_Required'])
+        if filename == DEPT_FILE: return pd.DataFrame(columns=['Department', 'Staff_Name', 'Designation', 'SAP_ID', 'Status', 'Action_Required'])
+        if filename == OPS_FILE: return pd.DataFrame(columns=['Unit', 'Desk', 'Staff_Name', 'Status', 'Action_Required'])
         return pd.DataFrame()
 
 def save_local(df, filename):
@@ -74,7 +89,6 @@ def save_local(df, filename):
 def format_staff_name(raw_name, desg=""):
     if "VACANT" in str(raw_name): return "VACANT"
     clean = re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', str(raw_name), flags=re.IGNORECASE).strip()
-    
     if desg and str(desg).strip() and str(desg).lower() not in clean.lower():
         clean = f"{clean} ({desg})"
     elif not desg:
@@ -83,27 +97,38 @@ def format_staff_name(raw_name, desg=""):
         if match: clean = f"{clean[:match.start()].strip()} ({match.group(1)})"
     return clean
 
+# --- HIERARCHY LOGIC ---
+def get_rank_level(desg):
+    """Returns a numeric rank for sorting (1=Highest)"""
+    d = str(desg).upper().replace('.', '').strip()
+    if 'EXECUTIVE' in d or 'EE' in d:
+        if 'ADD' in d or 'AD' in d: return 2  # Add. EE
+        if 'DY' in d: return 3   # Dy. EE
+        if d == 'EE' or d == 'EXECUTIVE ENGINEER': return 1 # EE
+    if 'AE' in d or 'ASSISTANT' in d: return 4 # AE
+    if 'JE' in d or 'JUNIOR' in d: return 5 # JE
+    return 6 # Other
+
 # --- CHART GENERATORS ---
 def create_dashboard_charts(df, mode="Ops", filter_val=None):
+    if df.empty: return None, None
     op_df = df
-    if mode == "Ops":
-        # Ensure 'Desk' exists before filtering
-        if 'Desk' in df.columns:
-            op_df = df[df['Desk'] != 'Shift In-Charge']
+    if mode == VIEW_OPS:
+        op_df = df[df['Desk'] != 'Shift In-Charge']
     elif filter_val and filter_val != "All":
         op_df = df[df['Department'] == filter_val]
     
-    if op_df.empty: return None, None # Handle empty data
+    if op_df.empty: return None, None
 
     fig1, ax1 = plt.subplots(figsize=(4, 3))
     status_counts = op_df['Status'].value_counts()
     colors_map = {'VACANCY':'#D32F2F', 'Transferred':'#F57C00', 'Active':'#388E3C'}
     pie_cols = [colors_map.get(x, '#999') for x in status_counts.index]
     ax1.pie(status_counts, labels=status_counts.index, autopct='%1.1f%%', colors=pie_cols, startangle=90)
-    ax1.set_title('Status Distribution', fontsize=10, fontweight='bold')
+    ax1.set_title('Status', fontsize=10, fontweight='bold')
     
     fig2, ax2 = plt.subplots(figsize=(5, 3))
-    if mode == "Ops":
+    if mode == VIEW_OPS:
         gaps = op_df[op_df['Status'].isin(['VACANCY', 'Transferred'])]
         if not gaps.empty and 'Unit' in gaps.columns:
             gap_counts = gaps.groupby(['Unit', 'Status']).size().unstack(fill_value=0)
@@ -116,7 +141,7 @@ def create_dashboard_charts(df, mode="Ops", filter_val=None):
         if 'Designation' in op_df.columns:
             desg_counts = op_df['Designation'].value_counts().head(5)
             desg_counts.plot(kind='bar', color='#2c3e50', ax=ax2)
-            ax2.set_title('Top Designations', fontsize=10, fontweight='bold')
+            ax2.set_title('Designation Split', fontsize=10, fontweight='bold')
             ax2.tick_params(axis='x', rotation=45, labelsize=8)
 
     f1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
@@ -145,7 +170,7 @@ def generate_pdf_report_lab(df, mode="Ops", filter_val=None):
     story = []
     styles = getSampleStyleSheet()
     
-    title_text = "Shift Operations Report" if mode == "Ops" else "Departmental Staff List"
+    title_text = "Shift Operations Report" if mode == VIEW_OPS else "Departmental Staff List"
     if filter_val and filter_val != "All": title_text += f" - {filter_val}"
     
     story.append(Paragraph(f"MAHAGENCO Parli TPS - {title_text}", styles['Title']))
@@ -159,7 +184,7 @@ def generate_pdf_report_lab(df, mode="Ops", filter_val=None):
         story.append(Table([[img1, img2]], colWidths=[250, 250]))
         story.append(Spacer(1, 20))
 
-    if mode == "Ops" and not df.empty:
+    if mode == VIEW_OPS and not df.empty:
         units = sorted(df['Unit'].unique())
         desks = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
         data = [['Position'] + units]
@@ -193,7 +218,11 @@ def generate_pdf_report_lab(df, mode="Ops", filter_val=None):
         depts = sorted(working_df['Department'].unique())
         for dept in depts:
             story.append(Paragraph(f"<b>{dept}</b>", styles['Heading3']))
-            d_df = working_df[working_df['Department'] == dept]
+            d_df = working_df[working_df['Department'] == dept].copy()
+            # Sort PDF by rank too
+            d_df['Rank'] = d_df['Designation'].apply(get_rank_level)
+            d_df = d_df.sort_values('Rank')
+            
             d_data = [['Name', 'Designation', 'SAP ID', 'Status']]
             for _, r in d_df.iterrows():
                 stat = r['Status']
@@ -217,11 +246,11 @@ dept_df = load_data(DEPT_FILE)
 # --- HEADER & NAVIGATION ---
 st.title("⚡ Mahagenco Staffing Portal")
 
-view_mode = st.radio("", ["Shift Operations", "Departmental Staff"], horizontal=True, label_visibility="collapsed")
-active_df = ops_df if view_mode == "Shift Operations" else dept_df
+view_mode = st.radio("", [VIEW_OPS, VIEW_DEPT], horizontal=True, label_visibility="collapsed")
+active_df = ops_df if view_mode == VIEW_OPS else dept_df
 
 selected_dept = "All"
-if view_mode == "Departmental Staff" and not dept_df.empty:
+if view_mode == VIEW_DEPT and not dept_df.empty:
     depts = ["All"] + sorted(dept_df['Department'].unique().tolist())
     selected_dept = st.selectbox("Filter Department:", depts)
     if selected_dept != "All":
@@ -232,9 +261,10 @@ st.markdown("---")
 tab1, tab2, tab3 = st.tabs(["📊 Dashboard & Roster", "🔍 Search & Reports", "🛠️ Admin Actions"])
 
 with tab1:
-    if view_mode == "Shift Operations":
+    if view_mode == VIEW_OPS:
+        # OPS DASHBOARD
         if ops_df.empty or 'Desk' not in ops_df.columns:
-            st.error("⚠️ Operations Data File Missing! Please upload 'stitched_staffing_data.csv'.")
+            st.error(f"Data Missing. Check {OPS_FILE}")
         else:
             op_df = ops_df[ops_df['Desk'] != 'Shift In-Charge']
             c1, c2, c3 = st.columns([1, 1.5, 1.2])
@@ -284,8 +314,9 @@ with tab1:
             st.write(pd.DataFrame(table_data).to_html(escape=False, index=False, classes="table table-bordered"), unsafe_allow_html=True)
 
     else:
+        # DEPT DASHBOARD
         if dept_df.empty:
-            st.error("⚠️ Departmental Data File Missing! Please upload 'departmental_staffing_data.csv'.")
+            st.error(f"Data Missing. Check {DEPT_FILE}")
         else:
             c1, c2 = st.columns([2, 1])
             with c1:
@@ -297,14 +328,46 @@ with tab1:
                 desg_counts = active_df['Designation'].value_counts().head(5).reset_index()
                 fig2 = px.pie(desg_counts, values='count', names='Designation', hole=0.4, title="Top Designations")
                 st.plotly_chart(fig2, use_container_width=True)
+            
+            st.divider()
+            
+            # --- HIERARCHY TREE VIEW ---
+            if selected_dept != "All":
+                st.subheader(f"🏛️ Hierarchy: {selected_dept}")
                 
-            st.dataframe(active_df, use_container_width=True, hide_index=True)
+                # Assign Rank
+                active_df['Rank'] = active_df['Designation'].apply(get_rank_level)
+                sorted_staff = active_df.sort_values(by='Rank')
+                
+                rank_labels = {1: ("👑 Executive Engineer (EE)", "rank-ee"), 
+                               2: ("⭐ Addl. Executive Engineer (AD.EE)", "rank-ad"),
+                               3: ("🔷 Dy. Executive Engineer (DY.EE)", "rank-dy"),
+                               4: ("🔧 Assistant Engineer (AE)", "rank-ae"),
+                               5: ("🛠️ Junior Engineer (JE)", "rank-je"),
+                               6: ("📋 Other Staff", "rank-je")}
+                
+                # Display Groups
+                for rank in range(1, 7):
+                    group = sorted_staff[sorted_staff['Rank'] == rank]
+                    if not group.empty:
+                        label, css_class = rank_labels[rank]
+                        if rank > 1: st.markdown(f'<div class="connector">⬇</div>', unsafe_allow_html=True)
+                        
+                        st.markdown(f'<div class="rank-box {css_class}">{label}</div>', unsafe_allow_html=True)
+                        
+                        # List staff in this rank
+                        cols = st.columns(3)
+                        for i, (_, row) in enumerate(group.iterrows()):
+                            name = format_staff_name(row['Staff_Name'])
+                            status_icon = "🔴" if row['Status'] == 'VACANCY' else "🟠" if row['Status'] == 'Transferred' else "🟢"
+                            cols[i % 3].success(f"{status_icon} **{name}**")
+            else:
+                st.dataframe(active_df, use_container_width=True, hide_index=True)
 
 with tab2:
     st.header("Search")
     search_term = st.text_input("Enter Name")
     
-    # Combined search
     combined_search = pd.DataFrame()
     if not ops_df.empty: combined_search = pd.concat([combined_search, ops_df.assign(Source='Ops')])
     if not dept_df.empty: combined_search = pd.concat([combined_search, dept_df.assign(Source='Dept')])
@@ -330,15 +393,15 @@ with tab3:
             st.rerun()
             
         st.write(f"Editing: **{view_mode}**")
-        working_df = ops_df if view_mode == "Shift Operations" else dept_df
-        target_file = OPS_FILE if view_mode == "Shift Operations" else DEPT_FILE
+        working_df = ops_df if view_mode == VIEW_OPS else dept_df
+        target_file = OPS_FILE if view_mode == VIEW_OPS else DEPT_FILE
         
         if working_df.empty:
             st.error("Cannot edit empty dataset.")
         else:
             act = st.selectbox("Action", ["Change Status", "Add Person"])
             if act == "Change Status":
-                if view_mode == "Shift Operations":
+                if view_mode == VIEW_OPS:
                     u = st.selectbox("Unit", working_df['Unit'].unique())
                     d = st.selectbox("Desk", working_df[working_df['Unit']==u]['Desk'].unique())
                     p_list = working_df[(working_df['Unit']==u)&(working_df['Desk']==d)]
@@ -358,11 +421,10 @@ with tab3:
                         st.success("Updated!")
                         st.rerun()
 
-# Sidebar PDF Button
 with st.sidebar:
     st.title("Report")
     if not active_df.empty:
         if st.button("📄 Generate PDF"):
             with st.spinner("Generating..."):
-                pdf_bytes = generate_pdf_report_lab(active_df, mode="Ops" if view_mode=="Shift Operations" else "Dept", filter_val=selected_dept)
+                pdf_bytes = generate_pdf_report_lab(active_df, mode="Ops" if view_mode==VIEW_OPS else "Dept", filter_val=selected_dept)
                 st.download_button("⬇️ Download PDF", pdf_bytes, "Report.pdf", "application/pdf")
