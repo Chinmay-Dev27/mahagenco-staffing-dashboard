@@ -67,13 +67,11 @@ def update_github(df, filename):
         st.error(f"GitHub Sync Error: {e}")
         return False
 
-@st.cache_data
+@st.cache_data(ttl=60)
 def load_data(filename):
     try:
         df = pd.read_csv(filename)
-        if filename == OPS_FILE and 'Desk' not in df.columns:
-             return pd.DataFrame(columns=['Unit', 'Desk', 'Staff_Name', 'Status', 'Action_Required'])
-        
+        if filename == OPS_FILE and 'Desk' not in df.columns: return pd.DataFrame()
         if 'Status' not in df.columns: df['Status'] = 'Active'
         if 'Action_Required' not in df.columns: df['Action_Required'] = ''
         return df.fillna("")
@@ -97,7 +95,6 @@ def format_staff_name(raw_name, desg=""):
         if match: clean = f"{clean[:match.start()].strip()} ({match.group(1)})"
     return clean
 
-# --- HIERARCHY LOGIC ---
 def get_rank_level(desg):
     d = str(desg).upper().replace('.', '').strip()
     if 'EXECUTIVE' in d or 'EE' in d:
@@ -247,7 +244,6 @@ st.title("⚡ Mahagenco Staffing Portal")
 view_mode = st.radio("", [VIEW_OPS, VIEW_DEPT], horizontal=True, label_visibility="collapsed")
 active_df = ops_df if view_mode == VIEW_OPS else dept_df
 
-# Filter Logic
 selected_dept = "All"
 if view_mode == VIEW_DEPT and not dept_df.empty:
     depts = ["All"] + sorted(dept_df['Department'].unique().tolist())
@@ -330,12 +326,19 @@ with tab1:
             st.divider()
             st.subheader("🏛️ Departmental Staff Hierarchy")
             
-            # Group by Department for Expanders
-            dept_groups = active_df.groupby('Department')
+            # Use unique departments for iteration
+            all_departments = sorted(active_df['Department'].unique())
             
-            for dept_name, group in dept_groups:
-                with st.expander(f"📂 {dept_name} ({len(group)} Staff)", expanded=(selected_dept != "All")):
-                    # Hierarchy Logic
+            # --- SPECIAL HANDLING FOR CHP FOLDERS ---
+            chp_subfolders = [d for d in all_departments if 'CHP' in d]
+            other_folders = [d for d in all_departments if 'CHP' not in d]
+            
+            # Render Non-CHP folders
+            for dept_name in other_folders:
+                group = active_df[active_df['Department'] == dept_name]
+                if group.empty: continue
+                
+                with st.expander(f"📂 {dept_name} ({len(group)} Staff)", expanded=(selected_dept == dept_name)):
                     group = group.copy()
                     group['Rank'] = group['Designation'].apply(get_rank_level)
                     sorted_staff = group.sort_values(by='Rank')
@@ -354,13 +357,43 @@ with tab1:
                         if not sub_group.empty:
                             label, css_class = rank_labels[rank]
                             st.markdown(f'<div class="rank-box {css_class}">{label}</div>', unsafe_allow_html=True)
-                            
-                            # List staff columns
                             cols = st.columns(3)
                             for i, (_, row) in enumerate(sub_group.iterrows()):
                                 name = format_staff_name(row['Staff_Name'])
                                 status_icon = "🔴" if row['Status'] == 'VACANCY' else "🟠" if row['Status'] == 'Transferred' else "🟢"
                                 cols[i % 3].markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;{status_icon} **{name}**")
+
+            # Render CHP folders (if any exist and filter permits)
+            if chp_subfolders and (selected_dept == "All" or "CHP" in selected_dept):
+                # Just render them as normal folders now, no merging
+                for dept_name in sorted(chp_subfolders):
+                    group = active_df[active_df['Department'] == dept_name]
+                    if group.empty: continue
+                    
+                    with st.expander(f"🏭 {dept_name} ({len(group)} Staff)", expanded=(selected_dept == dept_name)):
+                        group = group.copy()
+                        group['Rank'] = group['Designation'].apply(get_rank_level)
+                        sorted_staff = group.sort_values(by='Rank')
+                        
+                        rank_labels = {
+                            1: ("👑 Executive Engineer (EE)", "rank-ee"), 
+                            2: ("⭐ Addl. Executive Engineer (AD.EE)", "rank-ad"),
+                            3: ("🔷 Dy. Executive Engineer (DY.EE)", "rank-dy"),
+                            4: ("🔧 Assistant Engineer (AE)", "rank-ae"),
+                            5: ("🛠️ Junior Engineer (JE)", "rank-je"),
+                            6: ("📋 Other Staff", "rank-je")
+                        }
+                        
+                        for rank in range(1, 7):
+                            sub_group = sorted_staff[sorted_staff['Rank'] == rank]
+                            if not sub_group.empty:
+                                label, css_class = rank_labels[rank]
+                                st.markdown(f'<div class="rank-box {css_class}">{label}</div>', unsafe_allow_html=True)
+                                cols = st.columns(3)
+                                for i, (_, row) in enumerate(sub_group.iterrows()):
+                                    name = format_staff_name(row['Staff_Name'])
+                                    status_icon = "🔴" if row['Status'] == 'VACANCY' else "🟠" if row['Status'] == 'Transferred' else "🟢"
+                                    cols[i % 3].markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;{status_icon} **{name}**")
 
 with tab2:
     st.header("Search")
@@ -436,7 +469,6 @@ with tab3:
                     if st.button("Add to Department"):
                         if new_name:
                             new_row = {"Department": new_dept, "Staff_Name": new_name, "Designation": new_desg, "SAP_ID": new_sap, "Status": "Active", "Action_Required": ""}
-                            # Fix for appending
                             working_df = pd.concat([working_df, pd.DataFrame([new_row])], ignore_index=True)
                             save_local(working_df, target_file)
                             update_github(working_df, target_file)
