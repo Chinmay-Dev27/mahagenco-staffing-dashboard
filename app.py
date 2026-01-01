@@ -108,25 +108,12 @@ def get_rank_level(desg):
 # --- HELPER: CALCULATE METRICS (DEDUPLICATED) ---
 def calculate_metrics(df, mode="Ops"):
     if df.empty: return 0, 0, pd.Series()
-    
-    # We must deduplicate by Name to count actual humans, not roles
-    # Filter out VACANT positions first as they are not "people"
     staff_only = df[df['Staff_Name'].str.contains("VACANT", case=False) == False]
-    
-    # Deduplicate based on Staff_Name
     unique_staff = staff_only.drop_duplicates(subset=['Staff_Name'])
-    
-    # Now count statuses
     transferred = len(unique_staff[unique_staff['Status'] == 'Transferred'])
-    
-    # For vacancies, we count ROWS (positions), not people.
     vacant = len(df[df['Status'] == 'VACANCY'])
-    
     status_counts = unique_staff['Status'].value_counts()
-    # Add vacancy count back to status counts for charts
-    if vacant > 0:
-        status_counts['VACANCY'] = vacant
-        
+    if vacant > 0: status_counts['VACANCY'] = vacant
     return vacant, transferred, status_counts
 
 # --- CHART GENERATORS ---
@@ -141,7 +128,6 @@ def create_dashboard_charts(df, mode="Ops", filter_val=None):
     
     if op_df.empty: return None, None
 
-    # Use deduplicated logic for the chart
     _, _, status_counts = calculate_metrics(op_df, mode)
 
     fig1, ax1 = plt.subplots(figsize=(4, 3))
@@ -216,7 +202,6 @@ def generate_pdf_report_lab(df, mode="Ops", filter_val=None):
         story.append(Spacer(1, 20))
 
     if mode == VIEW_OPS and not df.empty:
-        # Shift In-Charge Section First
         sic_df = df[df['Desk'] == 'Shift In-Charge']
         if not sic_df.empty:
             story.append(Paragraph("Shift In-Charge (EE)", styles['Heading3']))
@@ -313,14 +298,12 @@ with tab1:
         else:
             op_df = ops_df[ops_df['Desk'] != 'Shift In-Charge']
             
-            # --- CALCULATE METRICS (DEDUPLICATED) ---
             vacant_count, transferred_count, status_counts = calculate_metrics(op_df, VIEW_OPS)
             
             c1, c2, c3 = st.columns([1, 1.5, 1.2])
             
             with c1:
                 st.markdown("##### Staff Status")
-                # Use deduplicated status_counts
                 fig1 = px.pie(values=status_counts.values, names=status_counts.index, 
                               color=status_counts.index, color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96'}, hole=0.4)
                 fig1.update_layout(showlegend=False, margin=dict(t=0,b=0), height=150)
@@ -346,23 +329,32 @@ with tab1:
             st.subheader("👨‍✈️ Shift In-Charge (EE)")
             sic_df = ops_df[ops_df['Desk'] == 'Shift In-Charge']
             
-            # Get unique names to handle the "Common Pool" issue in display
             u67_names = sic_df[sic_df['Unit'].isin(['Unit 6', 'Unit 7'])]['Staff_Name'].unique()
             u8_names = sic_df[sic_df['Unit'] == 'Unit 8']['Staff_Name'].unique()
             
-            # Create a nice dataframe for display
             sic_data = []
             max_len = max(len(u67_names), len(u8_names))
             for i in range(max_len):
-                n67 = format_staff_name(u67_names[i]) if i < len(u67_names) else ""
-                n8 = format_staff_name(u8_names[i]) if i < len(u8_names) else ""
-                # Get status icon
-                s67 = "🟠" if "Transferred" in str(sic_df[sic_df['Staff_Name']==u67_names[i]]['Status'].values) else "🟢" if i < len(u67_names) else ""
-                s8 = "🟠" if "Transferred" in str(sic_df[sic_df['Staff_Name']==u8_names[i]]['Status'].values) else "🟢" if i < len(u8_names) else ""
+                n67 = ""
+                s67_icon = ""
+                if i < len(u67_names):
+                    nm = u67_names[i]
+                    n67 = format_staff_name(nm)
+                    # Check status
+                    status_row = sic_df[sic_df['Staff_Name'] == nm]['Status'].values
+                    s67_icon = "🟠" if "Transferred" in status_row else "🟢"
+
+                n8 = ""
+                s8_icon = ""
+                if i < len(u8_names):
+                    nm = u8_names[i]
+                    n8 = format_staff_name(nm)
+                    status_row = sic_df[sic_df['Staff_Name'] == nm]['Status'].values
+                    s8_icon = "🟠" if "Transferred" in status_row else "🟢"
                 
                 sic_data.append({
-                    "Unit 6 & 7 (Common Pool)": f"{s67} {n67}",
-                    "Unit 8": f"{s8} {n8}"
+                    "Unit 6 & 7 (Common Pool)": f"{s67_icon} {n67}",
+                    "Unit 8": f"{s8_icon} {n8}"
                 })
             
             st.dataframe(pd.DataFrame(sic_data), use_container_width=True, hide_index=True)
