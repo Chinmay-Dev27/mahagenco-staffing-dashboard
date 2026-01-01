@@ -105,6 +105,30 @@ def get_rank_level(desg):
     if 'JE' in d or 'JUNIOR' in d: return 5
     return 6
 
+# --- HELPER: CALCULATE METRICS (DEDUPLICATED) ---
+def calculate_metrics(df, mode="Ops"):
+    if df.empty: return 0, 0, pd.Series()
+    
+    # We must deduplicate by Name to count actual humans, not roles
+    # Filter out VACANT positions first as they are not "people"
+    staff_only = df[df['Staff_Name'].str.contains("VACANT", case=False) == False]
+    
+    # Deduplicate based on Staff_Name
+    unique_staff = staff_only.drop_duplicates(subset=['Staff_Name'])
+    
+    # Now count statuses
+    transferred = len(unique_staff[unique_staff['Status'] == 'Transferred'])
+    
+    # For vacancies, we count ROWS (positions), not people.
+    vacant = len(df[df['Status'] == 'VACANCY'])
+    
+    status_counts = unique_staff['Status'].value_counts()
+    # Add vacancy count back to status counts for charts
+    if vacant > 0:
+        status_counts['VACANCY'] = vacant
+        
+    return vacant, transferred, status_counts
+
 # --- CHART GENERATORS ---
 def create_dashboard_charts(df, mode="Ops", filter_val=None):
     if df.empty: return None, None
@@ -117,12 +141,14 @@ def create_dashboard_charts(df, mode="Ops", filter_val=None):
     
     if op_df.empty: return None, None
 
+    # Use deduplicated logic for the chart
+    _, _, status_counts = calculate_metrics(op_df, mode)
+
     fig1, ax1 = plt.subplots(figsize=(4, 3))
-    status_counts = op_df['Status'].value_counts()
     colors_map = {'VACANCY':'#D32F2F', 'Transferred':'#F57C00', 'Active':'#388E3C'}
     pie_cols = [colors_map.get(x, '#999') for x in status_counts.index]
     ax1.pie(status_counts, labels=status_counts.index, autopct='%1.1f%%', colors=pie_cols, startangle=90)
-    ax1.set_title('Status', fontsize=10, fontweight='bold')
+    ax1.set_title('Status (Unique Staff)', fontsize=10, fontweight='bold')
     
     fig2, ax2 = plt.subplots(figsize=(5, 3))
     if mode == VIEW_OPS:
@@ -194,13 +220,10 @@ def generate_pdf_report_lab(df, mode="Ops", filter_val=None):
         sic_df = df[df['Desk'] == 'Shift In-Charge']
         if not sic_df.empty:
             story.append(Paragraph("Shift In-Charge (EE)", styles['Heading3']))
-            # Group by Unit for SIC
             sic_data = [['Unit', 'Shift In-Charge Name']]
-            # Combine 6&7
             u67_sic = sic_df[sic_df['Unit'].isin(['Unit 6', 'Unit 7'])]['Staff_Name'].unique()
             if len(u67_sic) > 0:
                 sic_data.append(['Unit 6 & 7 (Common)', ", ".join([format_staff_name(x) for x in u67_sic])])
-            
             u8_sic = sic_df[sic_df['Unit'] == 'Unit 8']['Staff_Name'].unique()
             if len(u8_sic) > 0:
                 sic_data.append(['Unit 8', ", ".join([format_staff_name(x) for x in u8_sic])])
@@ -235,7 +258,6 @@ def generate_pdf_report_lab(df, mode="Ops", filter_val=None):
         main_table.setStyle(TableStyle(t_style))
         story.append(main_table)
     elif not df.empty:
-        # Departmental List PDF
         working_df = df
         if filter_val and filter_val != "All":
             working_df = df[df['Department'] == filter_val]
@@ -286,17 +308,21 @@ tab1, tab2, tab3 = st.tabs(["📊 Dashboard & Roster", "🔍 Search & Reports", 
 
 with tab1:
     if view_mode == VIEW_OPS:
-        # --- OPS DASHBOARD ---
         if ops_df.empty:
             st.error("Data Missing for Shift Ops.")
         else:
             op_df = ops_df[ops_df['Desk'] != 'Shift In-Charge']
+            
+            # --- CALCULATE METRICS (DEDUPLICATED) ---
+            vacant_count, transferred_count, status_counts = calculate_metrics(op_df, VIEW_OPS)
+            
             c1, c2, c3 = st.columns([1, 1.5, 1.2])
             
             with c1:
                 st.markdown("##### Staff Status")
-                fig1 = px.pie(op_df['Status'].value_counts().reset_index(), values='count', names='Status', 
-                              color='Status', color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96'}, hole=0.4)
+                # Use deduplicated status_counts
+                fig1 = px.pie(values=status_counts.values, names=status_counts.index, 
+                              color=status_counts.index, color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96'}, hole=0.4)
                 fig1.update_layout(showlegend=False, margin=dict(t=0,b=0), height=150)
                 st.plotly_chart(fig1, use_container_width=True)
 
@@ -313,23 +339,33 @@ with tab1:
             with c3:
                 st.markdown("##### Metrics")
                 m1, m2 = st.columns(2)
-                m1.metric("Shortage", len(op_df[op_df['Status']=='VACANCY']))
-                m2.metric("Transferred", len(op_df[op_df['Status']=='Transferred']))
+                m1.metric("Shortage", vacant_count)
+                m2.metric("Transferred", transferred_count)
 
             # --- Shift In-Charge Table ---
             st.subheader("👨‍✈️ Shift In-Charge (EE)")
             sic_df = ops_df[ops_df['Desk'] == 'Shift In-Charge']
             
-            sic_cols = st.columns(2)
-            with sic_cols[0]:
-                st.markdown("**Unit 6 & 7 (Common Pool)**")
-                u67_names = sic_df[sic_df['Unit'].isin(['Unit 6', 'Unit 7'])]['Staff_Name'].unique()
-                for n in u67_names: st.info(format_staff_name(n))
+            # Get unique names to handle the "Common Pool" issue in display
+            u67_names = sic_df[sic_df['Unit'].isin(['Unit 6', 'Unit 7'])]['Staff_Name'].unique()
+            u8_names = sic_df[sic_df['Unit'] == 'Unit 8']['Staff_Name'].unique()
+            
+            # Create a nice dataframe for display
+            sic_data = []
+            max_len = max(len(u67_names), len(u8_names))
+            for i in range(max_len):
+                n67 = format_staff_name(u67_names[i]) if i < len(u67_names) else ""
+                n8 = format_staff_name(u8_names[i]) if i < len(u8_names) else ""
+                # Get status icon
+                s67 = "🟠" if "Transferred" in str(sic_df[sic_df['Staff_Name']==u67_names[i]]['Status'].values) else "🟢" if i < len(u67_names) else ""
+                s8 = "🟠" if "Transferred" in str(sic_df[sic_df['Staff_Name']==u8_names[i]]['Status'].values) else "🟢" if i < len(u8_names) else ""
                 
-            with sic_cols[1]:
-                st.markdown("**Unit 8**")
-                u8_names = sic_df[sic_df['Unit'] == 'Unit 8']['Staff_Name'].unique()
-                for n in u8_names: st.info(format_staff_name(n))
+                sic_data.append({
+                    "Unit 6 & 7 (Common Pool)": f"{s67} {n67}",
+                    "Unit 8": f"{s8} {n8}"
+                })
+            
+            st.dataframe(pd.DataFrame(sic_data), use_container_width=True, hide_index=True)
 
             st.divider()
 
@@ -396,10 +432,9 @@ with tab1:
                             status_icon = "🔴" if row['Status'] == 'VACANCY' else "🟠" if row['Status'] == 'Transferred' else "🟢"
                             cols[i % 3].markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;{status_icon} **{name}**")
 
-            # 1. Main Plant Ops (Grouped, Closed by Default)
+            # 1. Main Plant Ops (Closed by default)
             if ops_folders and (selected_dept == "All" or "Main Plant Ops" in selected_dept):
                 ops_total = sum([len(active_df[active_df['Department'] == d]) for d in ops_folders])
-                # expanded=False closes it by default
                 with st.expander(f"🏭 Main Plant PCR Staff (Total: {ops_total})", expanded=False):
                     ops_tabs = st.tabs([d.replace("Main Plant Ops - ", "") for d in ops_folders])
                     for i, dept_name in enumerate(ops_folders):
@@ -407,7 +442,7 @@ with tab1:
                             group = active_df[active_df['Department'] == dept_name]
                             render_hierarchy(group)
 
-            # 2. Coal Handling Plant (Grouped, Closed by Default)
+            # 2. Coal Handling Plant (Closed by default)
             if chp_folders and (selected_dept == "All" or "CHP" in selected_dept):
                 chp_total = sum([len(active_df[active_df['Department'] == d]) for d in chp_folders])
                 with st.expander(f"🏭 Coal Handling Plant (Total: {chp_total})", expanded=False):
@@ -427,7 +462,6 @@ with tab1:
 with tab2:
     st.header("Search & Reports")
     
-    # Restored Filters & Charts for Search
     c_s1, c_s2 = st.columns(2)
     search_dept = c_s1.selectbox("Filter by Dept", ["All"] + sorted(dept_df['Department'].unique().tolist()))
     search_term = c_s2.text_input("Search Name")
@@ -437,7 +471,6 @@ with tab2:
     if search_dept != "All":
         combined_search = combined_search[combined_search['Department'] == search_dept]
     
-    # Mini Charts for Search Context
     if not combined_search.empty:
         c_ch1, c_ch2 = st.columns(2)
         with c_ch1:
