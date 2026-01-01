@@ -136,12 +136,8 @@ def create_dashboard_charts(df, mode="Ops", filter_val=None):
             ax2.axis('off')
     else:
         if 'Department' in op_df.columns and filter_val == "All":
-            # --- CUSTOM CHART LOGIC ---
             chart_df = op_df.copy()
-            # 1. Merge CHP
             chart_df.loc[chart_df['Department'].str.contains('CHP'), 'Department'] = 'Coal Handling Plant'
-            # 2. Main Plant Ops are already separate in data (Main Plant Ops - Unit 6, etc.), so they will show as bars.
-            
             dept_counts = chart_df['Department'].value_counts()
             dept_counts.plot(kind='bar', color='#2c3e50', ax=ax2)
             ax2.set_title('Department Strength', fontsize=10, fontweight='bold')
@@ -194,6 +190,26 @@ def generate_pdf_report_lab(df, mode="Ops", filter_val=None):
         story.append(Spacer(1, 20))
 
     if mode == VIEW_OPS and not df.empty:
+        # Shift In-Charge Section First
+        sic_df = df[df['Desk'] == 'Shift In-Charge']
+        if not sic_df.empty:
+            story.append(Paragraph("Shift In-Charge (EE)", styles['Heading3']))
+            # Group by Unit for SIC
+            sic_data = [['Unit', 'Shift In-Charge Name']]
+            # Combine 6&7
+            u67_sic = sic_df[sic_df['Unit'].isin(['Unit 6', 'Unit 7'])]['Staff_Name'].unique()
+            if len(u67_sic) > 0:
+                sic_data.append(['Unit 6 & 7 (Common)', ", ".join([format_staff_name(x) for x in u67_sic])])
+            
+            u8_sic = sic_df[sic_df['Unit'] == 'Unit 8']['Staff_Name'].unique()
+            if len(u8_sic) > 0:
+                sic_data.append(['Unit 8', ", ".join([format_staff_name(x) for x in u8_sic])])
+            
+            t_sic = Table(sic_data, colWidths=[150, 300])
+            t_sic.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+            story.append(t_sic)
+            story.append(Spacer(1, 15))
+
         units = sorted(df['Unit'].unique())
         desks = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
         data = [['Position'] + units]
@@ -300,6 +316,24 @@ with tab1:
                 m1.metric("Shortage", len(op_df[op_df['Status']=='VACANCY']))
                 m2.metric("Transferred", len(op_df[op_df['Status']=='Transferred']))
 
+            # --- Shift In-Charge Table ---
+            st.subheader("👨‍✈️ Shift In-Charge (EE)")
+            sic_df = ops_df[ops_df['Desk'] == 'Shift In-Charge']
+            
+            sic_cols = st.columns(2)
+            with sic_cols[0]:
+                st.markdown("**Unit 6 & 7 (Common Pool)**")
+                u67_names = sic_df[sic_df['Unit'].isin(['Unit 6', 'Unit 7'])]['Staff_Name'].unique()
+                for n in u67_names: st.info(format_staff_name(n))
+                
+            with sic_cols[1]:
+                st.markdown("**Unit 8**")
+                u8_names = sic_df[sic_df['Unit'] == 'Unit 8']['Staff_Name'].unique()
+                for n in u8_names: st.info(format_staff_name(n))
+
+            st.divider()
+
+            # Roster Table
             def agg_staff_html(x):
                 html = []
                 for _, row in x.iterrows():
@@ -327,10 +361,8 @@ with tab1:
         else:
             c1, c2 = st.columns([2, 1])
             with c1:
-                # Custom Chart: Merge CHP for display, Keep Main Plant Ops Split
                 chart_df = active_df.copy()
                 chart_df.loc[chart_df['Department'].str.contains('CHP'), 'Department'] = 'Coal Handling Plant'
-                
                 dept_counts = chart_df['Department'].value_counts().reset_index()
                 dept_counts.columns = ['Department', 'Count']
                 fig = px.bar(dept_counts, x='Department', y='Count', text_auto=True, color='Count', title="Department Strength")
@@ -343,29 +375,16 @@ with tab1:
             st.divider()
             st.subheader("🏛️ Departmental Staff Hierarchy")
             
-            # --- RENDER FOLDERS ---
             all_departments = sorted(active_df['Department'].unique())
-            
-            # Identify special folders
             chp_folders = [d for d in all_departments if 'CHP' in d]
             ops_folders = [d for d in all_departments if 'Main Plant Ops' in d]
             standard_folders = [d for d in all_departments if 'CHP' not in d and 'Main Plant Ops' not in d]
             
-            # Helper to render hierarchy
             def render_hierarchy(group):
                 group = group.copy()
                 group['Rank'] = group['Designation'].apply(get_rank_level)
                 sorted_staff = group.sort_values(by='Rank')
-                
-                rank_labels = {
-                    1: ("👑 Executive Engineer (EE)", "rank-ee"), 
-                    2: ("⭐ Addl. Executive Engineer (AD.EE)", "rank-ad"),
-                    3: ("🔷 Dy. Executive Engineer (DY.EE)", "rank-dy"),
-                    4: ("🔧 Assistant Engineer (AE)", "rank-ae"),
-                    5: ("🛠️ Junior Engineer (JE)", "rank-je"),
-                    6: ("📋 Other Staff", "rank-je")
-                }
-                
+                rank_labels = {1: ("👑 Executive Engineer (EE)", "rank-ee"), 2: ("⭐ Addl. Executive Engineer (AD.EE)", "rank-ad"), 3: ("🔷 Dy. Executive Engineer (DY.EE)", "rank-dy"), 4: ("🔧 Assistant Engineer (AE)", "rank-ae"), 5: ("🛠️ Junior Engineer (JE)", "rank-je"), 6: ("📋 Other Staff", "rank-je")}
                 for rank in range(1, 7):
                     sub_group = sorted_staff[sorted_staff['Rank'] == rank]
                     if not sub_group.empty:
@@ -377,20 +396,21 @@ with tab1:
                             status_icon = "🔴" if row['Status'] == 'VACANCY' else "🟠" if row['Status'] == 'Transferred' else "🟢"
                             cols[i % 3].markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;{status_icon} **{name}**")
 
-            # 1. Main Plant Ops (Grouped)
+            # 1. Main Plant Ops (Grouped, Closed by Default)
             if ops_folders and (selected_dept == "All" or "Main Plant Ops" in selected_dept):
                 ops_total = sum([len(active_df[active_df['Department'] == d]) for d in ops_folders])
-                with st.expander(f"🏭 Main Plant PCR Staff (Total: {ops_total})", expanded=True):
+                # expanded=False closes it by default
+                with st.expander(f"🏭 Main Plant PCR Staff (Total: {ops_total})", expanded=False):
                     ops_tabs = st.tabs([d.replace("Main Plant Ops - ", "") for d in ops_folders])
                     for i, dept_name in enumerate(ops_folders):
                         with ops_tabs[i]:
                             group = active_df[active_df['Department'] == dept_name]
                             render_hierarchy(group)
 
-            # 2. Coal Handling Plant (Grouped)
+            # 2. Coal Handling Plant (Grouped, Closed by Default)
             if chp_folders and (selected_dept == "All" or "CHP" in selected_dept):
                 chp_total = sum([len(active_df[active_df['Department'] == d]) for d in chp_folders])
-                with st.expander(f"🏭 Coal Handling Plant (Total: {chp_total})", expanded=(selected_dept == "All")):
+                with st.expander(f"🏭 Coal Handling Plant (Total: {chp_total})", expanded=False):
                     chp_tabs = st.tabs([d.replace("CHP", "").strip() for d in chp_folders])
                     for i, dept_name in enumerate(chp_folders):
                         with chp_tabs[i]:
@@ -405,18 +425,31 @@ with tab1:
                     render_hierarchy(group)
 
 with tab2:
-    st.header("Search")
-    search_term = st.text_input("Enter Name")
-    combined_search = pd.DataFrame()
-    if not ops_df.empty: combined_search = pd.concat([combined_search, ops_df.assign(Source='Ops')])
-    if not dept_df.empty: combined_search = pd.concat([combined_search, dept_df.assign(Source='Dept')])
+    st.header("Search & Reports")
     
-    if search_term and not combined_search.empty:
+    # Restored Filters & Charts for Search
+    c_s1, c_s2 = st.columns(2)
+    search_dept = c_s1.selectbox("Filter by Dept", ["All"] + sorted(dept_df['Department'].unique().tolist()))
+    search_term = c_s2.text_input("Search Name")
+    
+    combined_search = pd.concat([ops_df.assign(Source='Ops'), dept_df.assign(Source='Dept')])
+    
+    if search_dept != "All":
+        combined_search = combined_search[combined_search['Department'] == search_dept]
+    
+    # Mini Charts for Search Context
+    if not combined_search.empty:
+        c_ch1, c_ch2 = st.columns(2)
+        with c_ch1:
+            s_counts = combined_search['Status'].value_counts()
+            fig_s = px.pie(values=s_counts, names=s_counts.index, title="Status in Selection", hole=0.4, height=200)
+            st.plotly_chart(fig_s, use_container_width=True)
+    
+    if search_term:
         res = combined_search[combined_search['Staff_Name'].str.contains(search_term, case=False, na=False)]
         if not res.empty:
             for _, r in res.iterrows():
-                if r['Source'] == 'Ops': loc = f"{r['Unit']} - {r['Desk']}" 
-                else: loc = f"{r['Department']} ({r['Designation']})"
+                loc = f"{r['Unit']} - {r['Desk']}" if r['Source'] == 'Ops' else f"{r['Department']} ({r['Designation']})"
                 st.info(f"**{format_staff_name(r['Staff_Name'])}** | {loc} | {r['Status']}")
         else: st.warning("No match")
 
@@ -440,7 +473,6 @@ with tab3:
         else:
             act = st.selectbox("Action", ["Change Status", "Add Person"])
             
-            # --- ACTION: CHANGE STATUS ---
             if act == "Change Status":
                 if view_mode == VIEW_OPS:
                     u = st.selectbox("Unit", working_df['Unit'].unique())
@@ -462,19 +494,15 @@ with tab3:
                         st.success("Updated!")
                         st.rerun()
             
-            # --- ACTION: ADD PERSON ---
             elif act == "Add Person":
                 st.subheader("Add New Staff Member")
                 if view_mode == VIEW_DEPT:
-                    # Form for Departmental Staff
                     c1, c2 = st.columns(2)
                     new_dept = c1.selectbox("Select Department", sorted(working_df['Department'].unique()))
                     new_name = c2.text_input("Full Name")
-                    
                     c3, c4 = st.columns(2)
                     new_desg = c3.selectbox("Designation", ["EE", "AD.EE", "DY.EE", "AE", "JE", "Other"])
                     new_sap = c4.text_input("SAP ID (Optional)")
-                    
                     if st.button("Add to Department"):
                         if new_name:
                             new_row = {"Department": new_dept, "Staff_Name": new_name, "Designation": new_desg, "SAP_ID": new_sap, "Status": "Active", "Action_Required": ""}
@@ -483,19 +511,14 @@ with tab3:
                             update_github(working_df, target_file)
                             st.success(f"Added {new_name} to {new_dept}")
                             st.rerun()
-                        else:
-                            st.error("Name is required.")
-                            
+                        else: st.error("Name is required.")
                 else:
-                    # Form for Shift Operations (Ops)
                     c1, c2 = st.columns(2)
                     new_unit = c1.selectbox("Unit", ["Unit 6", "Unit 7", "Unit 8"])
                     new_desk = c2.selectbox("Desk", working_df['Desk'].unique())
                     new_name = st.text_input("Staff Name")
-                    
                     if st.button("Add to Roster"):
                         if new_name:
-                            # Check if seat is vacant to replace, else append
                             vac_check = working_df[(working_df['Unit']==new_unit) & (working_df['Desk']==new_desk) & (working_df['Status']=='VACANCY')]
                             if not vac_check.empty:
                                 idx = vac_check.index[0]
@@ -504,13 +527,11 @@ with tab3:
                             else:
                                 new_row = {"Unit": new_unit, "Desk": new_desk, "Staff_Name": new_name, "Status": "Active", "Action_Required": ""}
                                 working_df = pd.concat([working_df, pd.DataFrame([new_row])], ignore_index=True)
-                            
                             save_local(working_df, target_file)
                             update_github(working_df, target_file)
                             st.success(f"Added {new_name} to {new_desk}")
                             st.rerun()
-                        else:
-                            st.error("Name is required.")
+                        else: st.error("Name is required.")
 
 with st.sidebar:
     st.title("Report")
