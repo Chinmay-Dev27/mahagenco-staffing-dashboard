@@ -259,6 +259,7 @@ tab1, tab2, tab3 = st.tabs(["📊 Dashboard & Roster", "🔍 Search & Reports", 
 
 with tab1:
     if view_mode == VIEW_OPS:
+        # OPS DASHBOARD
         if ops_df.empty or 'Desk' not in ops_df.columns:
             st.error(f"Data Missing. Check {OPS_FILE}")
         else:
@@ -288,6 +289,7 @@ with tab1:
                 m1.metric("Shortage", len(op_df[op_df['Status']=='VACANCY']))
                 m2.metric("Transferred", len(op_df[op_df['Status']=='Transferred']))
 
+            # Roster Table
             def agg_staff_html(x):
                 html = []
                 for _, row in x.iterrows():
@@ -309,6 +311,7 @@ with tab1:
             st.write(pd.DataFrame(table_data).to_html(escape=False, index=False, classes="table table-bordered"), unsafe_allow_html=True)
 
     else:
+        # DEPT DASHBOARD
         if dept_df.empty:
             st.error(f"Data Missing. Check {DEPT_FILE}")
         else:
