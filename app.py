@@ -37,14 +37,14 @@ st.markdown("""
     
     /* Hierarchy Tree Styles */
     .rank-box { 
-        padding: 8px; margin: 4px 0; border-radius: 6px; text-align: center; color: white; font-weight: bold; font-size: 0.9em;
+        padding: 5px 10px; margin: 2px 0; border-radius: 6px; text-align: left; color: white; font-weight: bold; font-size: 0.9em; display: flex; align-items: center;
     }
-    .rank-ee { background-color: #1e3a8a; border-left: 5px solid #60a5fa; } 
-    .rank-ad { background-color: #1e40af; border-left: 5px solid #93c5fd; margin-left: 15px; }
-    .rank-dy { background-color: #1d4ed8; border-left: 5px solid #bfdbfe; margin-left: 30px; }
-    .rank-ae { background-color: #2563eb; border-left: 5px solid #dbeafe; margin-left: 45px; }
-    .rank-je { background-color: #3b82f6; border-left: 5px solid #eff6ff; margin-left: 60px; }
-    .connector { color: #aaa; font-size: 1.0em; margin-left: 40px; margin-top:-5px; margin-bottom:-5px;}
+    .rank-ee { background-color: #1565C0; border-left: 4px solid #90CAF9; } 
+    .rank-ad { background-color: #1976D2; border-left: 4px solid #64B5F6; margin-left: 15px; }
+    .rank-dy { background-color: #1E88E5; border-left: 4px solid #42A5F5; margin-left: 30px; }
+    .rank-ae { background-color: #0277BD; border-left: 4px solid #4FC3F7; margin-left: 45px; }
+    .rank-je { background-color: #00838F; border-left: 4px solid #26C6DA; margin-left: 60px; }
+    .staff-name { font-weight: normal; margin-left: 10px; color: #fff; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -71,25 +71,15 @@ def update_github(df, filename):
 def load_data(filename):
     try:
         df = pd.read_csv(filename)
-        # Verify critical columns
         if filename == OPS_FILE and 'Desk' not in df.columns:
-             st.error(f"Error in {filename}: Missing 'Desk' column. Check CSV headers.")
-             return pd.DataFrame()
-        if filename == DEPT_FILE and 'Department' not in df.columns:
-             st.error(f"Error in {filename}: Missing 'Department' column. Check CSV headers.")
-             return pd.DataFrame()
+             return pd.DataFrame(columns=['Unit', 'Desk', 'Staff_Name', 'Status', 'Action_Required'])
         
         if 'Status' not in df.columns: df['Status'] = 'Active'
         if 'Action_Required' not in df.columns: df['Action_Required'] = ''
         return df.fillna("")
-    except FileNotFoundError:
-        st.error(f"File Not Found: {filename}. Please create it in your repository.")
-        return pd.DataFrame()
-    except pd.errors.ParserError as e:
-        st.error(f"CSV Parse Error in {filename}: {e}. Check for bad commas or quotes.")
-        return pd.DataFrame()
-    except Exception as e:
-        st.error(f"Unexpected Error loading {filename}: {e}")
+    except:
+        if filename == DEPT_FILE: return pd.DataFrame(columns=['Department', 'Staff_Name', 'Designation', 'SAP_ID', 'Status', 'Action_Required'])
+        if filename == OPS_FILE: return pd.DataFrame(columns=['Unit', 'Desk', 'Staff_Name', 'Status', 'Action_Required'])
         return pd.DataFrame()
 
 def save_local(df, filename):
@@ -219,6 +209,7 @@ def generate_pdf_report_lab(df, mode="Ops", filter_val=None):
         main_table.setStyle(TableStyle(t_style))
         story.append(main_table)
     elif not df.empty:
+        # Departmental List PDF
         working_df = df
         if filter_val and filter_val != "All":
             working_df = df[df['Department'] == filter_val]
@@ -256,6 +247,7 @@ st.title("⚡ Mahagenco Staffing Portal")
 view_mode = st.radio("", [VIEW_OPS, VIEW_DEPT], horizontal=True, label_visibility="collapsed")
 active_df = ops_df if view_mode == VIEW_OPS else dept_df
 
+# Filter Logic
 selected_dept = "All"
 if view_mode == VIEW_DEPT and not dept_df.empty:
     depts = ["All"] + sorted(dept_df['Department'].unique().tolist())
@@ -269,8 +261,9 @@ tab1, tab2, tab3 = st.tabs(["📊 Dashboard & Roster", "🔍 Search & Reports", 
 
 with tab1:
     if view_mode == VIEW_OPS:
+        # --- OPS DASHBOARD ---
         if ops_df.empty:
-            st.error("No data available for Shift Operations.")
+            st.error("Data Missing for Shift Ops.")
         else:
             op_df = ops_df[ops_df['Desk'] != 'Shift In-Charge']
             c1, c2, c3 = st.columns([1, 1.5, 1.2])
@@ -298,7 +291,6 @@ with tab1:
                 m1.metric("Shortage", len(op_df[op_df['Status']=='VACANCY']))
                 m2.metric("Transferred", len(op_df[op_df['Status']=='Transferred']))
 
-            # Roster Table
             def agg_staff_html(x):
                 html = []
                 for _, row in x.iterrows():
@@ -320,8 +312,9 @@ with tab1:
             st.write(pd.DataFrame(table_data).to_html(escape=False, index=False, classes="table table-bordered"), unsafe_allow_html=True)
 
     else:
+        # --- DEPARTMENT DASHBOARD ---
         if dept_df.empty:
-            st.error("No data available for Departmental Staff.")
+            st.error("Data Missing for Departments.")
         else:
             c1, c2 = st.columns([2, 1])
             with c1:
@@ -335,31 +328,39 @@ with tab1:
                 st.plotly_chart(fig2, use_container_width=True)
             
             st.divider()
-            if selected_dept != "All":
-                st.subheader(f"🏛️ Hierarchy: {selected_dept}")
-                active_df['Rank'] = active_df['Designation'].apply(get_rank_level)
-                sorted_staff = active_df.sort_values(by='Rank')
-                
-                rank_labels = {1: ("👑 Executive Engineer (EE)", "rank-ee"), 
-                               2: ("⭐ Addl. Executive Engineer (AD.EE)", "rank-ad"),
-                               3: ("🔷 Dy. Executive Engineer (DY.EE)", "rank-dy"),
-                               4: ("🔧 Assistant Engineer (AE)", "rank-ae"),
-                               5: ("🛠️ Junior Engineer (JE)", "rank-je"),
-                               6: ("📋 Other Staff", "rank-je")}
-                
-                for rank in range(1, 7):
-                    group = sorted_staff[sorted_staff['Rank'] == rank]
-                    if not group.empty:
-                        label, css_class = rank_labels[rank]
-                        if rank > 1: st.markdown(f'<div class="connector">⬇</div>', unsafe_allow_html=True)
-                        st.markdown(f'<div class="rank-box {css_class}">{label}</div>', unsafe_allow_html=True)
-                        cols = st.columns(3)
-                        for i, (_, row) in enumerate(group.iterrows()):
-                            name = format_staff_name(row['Staff_Name'])
-                            status_icon = "🔴" if row['Status'] == 'VACANCY' else "🟠" if row['Status'] == 'Transferred' else "🟢"
-                            cols[i % 3].success(f"{status_icon} **{name}**")
-            else:
-                st.dataframe(active_df, use_container_width=True, hide_index=True)
+            st.subheader("🏛️ Departmental Staff Hierarchy")
+            
+            # Group by Department for Expanders
+            dept_groups = active_df.groupby('Department')
+            
+            for dept_name, group in dept_groups:
+                with st.expander(f"📂 {dept_name} ({len(group)} Staff)", expanded=(selected_dept != "All")):
+                    # Hierarchy Logic
+                    group = group.copy()
+                    group['Rank'] = group['Designation'].apply(get_rank_level)
+                    sorted_staff = group.sort_values(by='Rank')
+                    
+                    rank_labels = {
+                        1: ("👑 Executive Engineer (EE)", "rank-ee"), 
+                        2: ("⭐ Addl. Executive Engineer (AD.EE)", "rank-ad"),
+                        3: ("🔷 Dy. Executive Engineer (DY.EE)", "rank-dy"),
+                        4: ("🔧 Assistant Engineer (AE)", "rank-ae"),
+                        5: ("🛠️ Junior Engineer (JE)", "rank-je"),
+                        6: ("📋 Other Staff", "rank-je")
+                    }
+                    
+                    for rank in range(1, 7):
+                        sub_group = sorted_staff[sorted_staff['Rank'] == rank]
+                        if not sub_group.empty:
+                            label, css_class = rank_labels[rank]
+                            st.markdown(f'<div class="rank-box {css_class}">{label}</div>', unsafe_allow_html=True)
+                            
+                            # List staff columns
+                            cols = st.columns(3)
+                            for i, (_, row) in enumerate(sub_group.iterrows()):
+                                name = format_staff_name(row['Staff_Name'])
+                                status_icon = "🔴" if row['Status'] == 'VACANCY' else "🟠" if row['Status'] == 'Transferred' else "🟢"
+                                cols[i % 3].markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;{status_icon} **{name}**")
 
 with tab2:
     st.header("Search")
@@ -435,6 +436,7 @@ with tab3:
                     if st.button("Add to Department"):
                         if new_name:
                             new_row = {"Department": new_dept, "Staff_Name": new_name, "Designation": new_desg, "SAP_ID": new_sap, "Status": "Active", "Action_Required": ""}
+                            # Fix for appending
                             working_df = pd.concat([working_df, pd.DataFrame([new_row])], ignore_index=True)
                             save_local(working_df, target_file)
                             update_github(working_df, target_file)
