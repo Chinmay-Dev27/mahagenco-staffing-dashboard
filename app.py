@@ -108,7 +108,8 @@ def get_rank_level(desg):
 # --- CHART GENERATORS ---
 def create_dashboard_charts(df, mode="Ops", filter_val=None):
     if df.empty: return None, None
-    op_df = df
+    op_df = df.copy()
+    
     if mode == VIEW_OPS:
         op_df = df[df['Desk'] != 'Shift In-Charge']
     elif filter_val and filter_val != "All":
@@ -134,11 +135,26 @@ def create_dashboard_charts(df, mode="Ops", filter_val=None):
             ax2.text(0.5, 0.5, "No Critical Gaps", ha='center', va='center')
             ax2.axis('off')
     else:
-        if 'Designation' in op_df.columns:
-            desg_counts = op_df['Designation'].value_counts().head(5)
-            desg_counts.plot(kind='bar', color='#2c3e50', ax=ax2)
-            ax2.set_title('Designation Split', fontsize=10, fontweight='bold')
-            ax2.tick_params(axis='x', rotation=45, labelsize=8)
+        if 'Department' in op_df.columns and filter_val == "All":
+            # --- CUSTOM CHART LOGIC FOR DEPARTMENT STRENGTH ---
+            # 1. Merge all CHP entries into one "Coal Handling Plant"
+            # 2. Keep "Main Plant Ops" split by Unit (already done in CSV)
+            
+            temp_df = op_df.copy()
+            # Rename all CHP variations to generic 'Coal Handling Plant' just for the chart
+            temp_df.loc[temp_df['Department'].str.contains('CHP'), 'Department'] = 'Coal Handling Plant'
+            
+            dept_counts = temp_df['Department'].value_counts()
+            dept_counts.plot(kind='bar', color='#2c3e50', ax=ax2)
+            ax2.set_title('Department Strength', fontsize=10, fontweight='bold')
+            ax2.tick_params(axis='x', rotation=90, labelsize=8)
+        else:
+            # Fallback or specific filter
+            if 'Designation' in op_df.columns:
+                desg_counts = op_df['Designation'].value_counts().head(5)
+                desg_counts.plot(kind='bar', color='#2c3e50', ax=ax2)
+                ax2.set_title('Top Designations', fontsize=10, fontweight='bold')
+                ax2.tick_params(axis='x', rotation=45, labelsize=8)
 
     f1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
     f2 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
@@ -246,6 +262,11 @@ active_df = ops_df if view_mode == VIEW_OPS else dept_df
 
 selected_dept = "All"
 if view_mode == VIEW_DEPT and not dept_df.empty:
+    # Filter options: All, then individual departments
+    # We will hide "CHP Ops", "CHP M/M" etc from this top-level filter if we want a cleaner look,
+    # but for now showing all is safer for access.
+    # Actually, user wants "sub folder under CHP", implying CHP is the main entry.
+    # But filters usually flatten lists. Let's keep it flattened for the dropdown to access specific ones if needed.
     depts = ["All"] + sorted(dept_df['Department'].unique().tolist())
     selected_dept = st.selectbox("Filter Department:", depts)
     if selected_dept != "All":
@@ -314,7 +335,11 @@ with tab1:
         else:
             c1, c2 = st.columns([2, 1])
             with c1:
-                dept_counts = active_df['Department'].value_counts().reset_index()
+                # Custom Chart: Merge CHP for display, Keep Main Plant Ops Split
+                chart_df = active_df.copy()
+                chart_df.loc[chart_df['Department'].str.contains('CHP'), 'Department'] = 'Coal Handling Plant'
+                
+                dept_counts = chart_df['Department'].value_counts().reset_index()
                 dept_counts.columns = ['Department', 'Count']
                 fig = px.bar(dept_counts, x='Department', y='Count', text_auto=True, color='Count', title="Department Strength")
                 st.plotly_chart(fig, use_container_width=True)
@@ -326,74 +351,62 @@ with tab1:
             st.divider()
             st.subheader("🏛️ Departmental Staff Hierarchy")
             
-            # Use unique departments for iteration
+            # --- RENDER FOLDERS ---
             all_departments = sorted(active_df['Department'].unique())
             
-            # --- SPECIAL HANDLING FOR CHP FOLDERS ---
-            chp_subfolders = [d for d in all_departments if 'CHP' in d]
-            other_folders = [d for d in all_departments if 'CHP' not in d]
+            # 1. Identify CHP folders and Others
+            chp_folders = [d for d in all_departments if 'CHP' in d]
+            non_chp_folders = [d for d in all_departments if 'CHP' not in d]
             
-            # Render Non-CHP folders
-            for dept_name in other_folders:
+            # Helper to render hierarchy inside a container (expander or direct)
+            def render_hierarchy(group):
+                group = group.copy()
+                group['Rank'] = group['Designation'].apply(get_rank_level)
+                sorted_staff = group.sort_values(by='Rank')
+                
+                rank_labels = {
+                    1: ("👑 Executive Engineer (EE)", "rank-ee"), 
+                    2: ("⭐ Addl. Executive Engineer (AD.EE)", "rank-ad"),
+                    3: ("🔷 Dy. Executive Engineer (DY.EE)", "rank-dy"),
+                    4: ("🔧 Assistant Engineer (AE)", "rank-ae"),
+                    5: ("🛠️ Junior Engineer (JE)", "rank-je"),
+                    6: ("📋 Other Staff", "rank-je")
+                }
+                
+                for rank in range(1, 7):
+                    sub_group = sorted_staff[sorted_staff['Rank'] == rank]
+                    if not sub_group.empty:
+                        label, css_class = rank_labels[rank]
+                        st.markdown(f'<div class="rank-box {css_class}">{label}</div>', unsafe_allow_html=True)
+                        cols = st.columns(3)
+                        for i, (_, row) in enumerate(sub_group.iterrows()):
+                            name = format_staff_name(row['Staff_Name'])
+                            status_icon = "🔴" if row['Status'] == 'VACANCY' else "🟠" if row['Status'] == 'Transferred' else "🟢"
+                            cols[i % 3].markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;{status_icon} **{name}**")
+
+            # 2. Render Non-CHP (Standard) Folders
+            for dept_name in non_chp_folders:
                 group = active_df[active_df['Department'] == dept_name]
                 if group.empty: continue
-                
-                with st.expander(f"📂 {dept_name} ({len(group)} Staff)", expanded=(selected_dept == dept_name)):
-                    group = group.copy()
-                    group['Rank'] = group['Designation'].apply(get_rank_level)
-                    sorted_staff = group.sort_values(by='Rank')
-                    
-                    rank_labels = {
-                        1: ("👑 Executive Engineer (EE)", "rank-ee"), 
-                        2: ("⭐ Addl. Executive Engineer (AD.EE)", "rank-ad"),
-                        3: ("🔷 Dy. Executive Engineer (DY.EE)", "rank-dy"),
-                        4: ("🔧 Assistant Engineer (AE)", "rank-ae"),
-                        5: ("🛠️ Junior Engineer (JE)", "rank-je"),
-                        6: ("📋 Other Staff", "rank-je")
-                    }
-                    
-                    for rank in range(1, 7):
-                        sub_group = sorted_staff[sorted_staff['Rank'] == rank]
-                        if not sub_group.empty:
-                            label, css_class = rank_labels[rank]
-                            st.markdown(f'<div class="rank-box {css_class}">{label}</div>', unsafe_allow_html=True)
-                            cols = st.columns(3)
-                            for i, (_, row) in enumerate(sub_group.iterrows()):
-                                name = format_staff_name(row['Staff_Name'])
-                                status_icon = "🔴" if row['Status'] == 'VACANCY' else "🟠" if row['Status'] == 'Transferred' else "🟢"
-                                cols[i % 3].markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;{status_icon} **{name}**")
+                with st.expander(f"📂 {dept_name} ({len(group)} Staff)", expanded=(selected_dept==dept_name)):
+                    render_hierarchy(group)
 
-            # Render CHP folders (if any exist and filter permits)
-            if chp_subfolders and (selected_dept == "All" or "CHP" in selected_dept):
-                # Just render them as normal folders now, no merging
-                for dept_name in sorted(chp_subfolders):
-                    group = active_df[active_df['Department'] == dept_name]
-                    if group.empty: continue
+            # 3. Render CHP Main Folder -> Sub Folders
+            if chp_folders and (selected_dept == "All" or "CHP" in selected_dept):
+                # Calculate Total CHP Strength
+                chp_total = sum([len(active_df[active_df['Department'] == d]) for d in chp_folders])
+                
+                with st.expander(f"🏭 Coal Handling Plant (Total: {chp_total} Staff)", expanded=True):
+                    st.info("Breakdown by Section:")
+                    # Create Tabs for sub-sections inside the main CHP folder for cleaner UI
+                    # or just sequential headers. Tabs are cleaner.
+                    # Let's use tabs for sub-sections
+                    chp_tabs = st.tabs([d.replace("CHP", "").strip() for d in chp_folders])
                     
-                    with st.expander(f"🏭 {dept_name} ({len(group)} Staff)", expanded=(selected_dept == dept_name)):
-                        group = group.copy()
-                        group['Rank'] = group['Designation'].apply(get_rank_level)
-                        sorted_staff = group.sort_values(by='Rank')
-                        
-                        rank_labels = {
-                            1: ("👑 Executive Engineer (EE)", "rank-ee"), 
-                            2: ("⭐ Addl. Executive Engineer (AD.EE)", "rank-ad"),
-                            3: ("🔷 Dy. Executive Engineer (DY.EE)", "rank-dy"),
-                            4: ("🔧 Assistant Engineer (AE)", "rank-ae"),
-                            5: ("🛠️ Junior Engineer (JE)", "rank-je"),
-                            6: ("📋 Other Staff", "rank-je")
-                        }
-                        
-                        for rank in range(1, 7):
-                            sub_group = sorted_staff[sorted_staff['Rank'] == rank]
-                            if not sub_group.empty:
-                                label, css_class = rank_labels[rank]
-                                st.markdown(f'<div class="rank-box {css_class}">{label}</div>', unsafe_allow_html=True)
-                                cols = st.columns(3)
-                                for i, (_, row) in enumerate(sub_group.iterrows()):
-                                    name = format_staff_name(row['Staff_Name'])
-                                    status_icon = "🔴" if row['Status'] == 'VACANCY' else "🟠" if row['Status'] == 'Transferred' else "🟢"
-                                    cols[i % 3].markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;{status_icon} **{name}**")
+                    for i, dept_name in enumerate(chp_folders):
+                        with chp_tabs[i]:
+                            group = active_df[active_df['Department'] == dept_name]
+                            render_hierarchy(group)
 
 with tab2:
     st.header("Search")
