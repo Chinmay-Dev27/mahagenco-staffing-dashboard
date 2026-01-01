@@ -71,15 +71,25 @@ def update_github(df, filename):
 def load_data(filename):
     try:
         df = pd.read_csv(filename)
+        # Verify critical columns
         if filename == OPS_FILE and 'Desk' not in df.columns:
-             return pd.DataFrame(columns=['Unit', 'Desk', 'Staff_Name', 'Status', 'Action_Required'])
+             st.error(f"Error in {filename}: Missing 'Desk' column. Check CSV headers.")
+             return pd.DataFrame()
+        if filename == DEPT_FILE and 'Department' not in df.columns:
+             st.error(f"Error in {filename}: Missing 'Department' column. Check CSV headers.")
+             return pd.DataFrame()
         
         if 'Status' not in df.columns: df['Status'] = 'Active'
         if 'Action_Required' not in df.columns: df['Action_Required'] = ''
         return df.fillna("")
-    except:
-        if filename == DEPT_FILE: return pd.DataFrame(columns=['Department', 'Staff_Name', 'Designation', 'SAP_ID', 'Status', 'Action_Required'])
-        if filename == OPS_FILE: return pd.DataFrame(columns=['Unit', 'Desk', 'Staff_Name', 'Status', 'Action_Required'])
+    except FileNotFoundError:
+        st.error(f"File Not Found: {filename}. Please create it in your repository.")
+        return pd.DataFrame()
+    except pd.errors.ParserError as e:
+        st.error(f"CSV Parse Error in {filename}: {e}. Check for bad commas or quotes.")
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Unexpected Error loading {filename}: {e}")
         return pd.DataFrame()
 
 def save_local(df, filename):
@@ -259,9 +269,8 @@ tab1, tab2, tab3 = st.tabs(["📊 Dashboard & Roster", "🔍 Search & Reports", 
 
 with tab1:
     if view_mode == VIEW_OPS:
-        # OPS DASHBOARD
-        if ops_df.empty or 'Desk' not in ops_df.columns:
-            st.error(f"Data Missing. Check {OPS_FILE}")
+        if ops_df.empty:
+            st.error("No data available for Shift Operations.")
         else:
             op_df = ops_df[ops_df['Desk'] != 'Shift In-Charge']
             c1, c2, c3 = st.columns([1, 1.5, 1.2])
@@ -311,9 +320,8 @@ with tab1:
             st.write(pd.DataFrame(table_data).to_html(escape=False, index=False, classes="table table-bordered"), unsafe_allow_html=True)
 
     else:
-        # DEPT DASHBOARD
         if dept_df.empty:
-            st.error(f"Data Missing. Check {DEPT_FILE}")
+            st.error("No data available for Departmental Staff.")
         else:
             c1, c2 = st.columns([2, 1])
             with c1:
