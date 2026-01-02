@@ -10,12 +10,12 @@ import tempfile
 # --- REPORTLAB IMPORTS ---
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.graphics.shapes import Drawing, Line, Polygon
 
-# --- CONFIGURATION & CONSTANTS (MUST BE AT TOP) ---
+# --- CONFIGURATION & CONSTANTS ---
 st.set_page_config(page_title="Mahagenco Parli Ops", page_icon="⚡", layout="wide")
 
 OPS_FILE = 'stitched_staffing_data.csv'
@@ -116,105 +116,81 @@ def draw_orange_flag():
     d.add(Polygon([2, 10, 9, 7, 2, 4], fillColor=colors.orange, strokeWidth=0))
     return d
 
-# --- UNIVERSAL HELPER: CALCULATE METRICS (DEDUPLICATED) ---
+# --- UNIVERSAL METRICS HELPER ---
 def calculate_metrics(df):
     if df.empty: return 0, 0, pd.Series()
-    
-    # 1. Filter out Vacancies from People Count
     staff_only = df[df['Staff_Name'].str.contains("VACANT", case=False) == False].copy()
-    
-    # 2. Normalize Names
     staff_only['Staff_Name'] = staff_only['Staff_Name'].astype(str).str.strip()
-    
-    # 3. Prioritize 'Transferred' status for deduplication
-    # Rank: Transferred=2, Active=1
     staff_only['Status_Rank'] = staff_only['Status'].apply(lambda x: 2 if 'Transferred' in str(x) else 1)
-    
-    # Sort Descending by Rank -> Transferred appears first
     staff_only = staff_only.sort_values(by=['Staff_Name', 'Status_Rank'], ascending=[True, False])
-    
-    # Deduplicate, keeping the first (Transferred if exists)
     unique_staff = staff_only.drop_duplicates(subset=['Staff_Name'], keep='first')
-    
     transferred = len(unique_staff[unique_staff['Status'] == 'Transferred'])
     vacant = len(df[df['Status'] == 'VACANCY'])
-    
     status_counts = unique_staff['Status'].value_counts()
     if vacant > 0: status_counts['VACANCY'] = vacant
-    
     return vacant, transferred, status_counts
 
 def get_global_metrics(ops_df, dept_df, scope="Global"):
     dfs = []
-    
-    # Add Ops Data
     if not ops_df.empty and scope in ["Global", "Ops"]:
         clean_ops = ops_df[ops_df['Desk'] != 'Shift In-Charge'][['Staff_Name', 'Status']].copy()
         dfs.append(clean_ops)
-        
-    # Add Dept Data
     if not dept_df.empty:
         if scope == "Global":
             dfs.append(dept_df[['Staff_Name', 'Status']])
         elif scope == "Ops":
-            # Add Shift In-Charge from Dept file to Ops Metrics
             sic = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)][['Staff_Name', 'Status']]
             dfs.append(sic)
         elif scope == "Dept":
             dfs.append(dept_df[['Staff_Name', 'Status']])
-            
     if not dfs: return 0, 0, pd.Series()
-    
     combined = pd.concat(dfs)
     return calculate_metrics(combined)
 
 # --- PDF ENGINE ---
 def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
     story = []
     styles = getSampleStyleSheet()
     title_style = styles['Title']
     heading_style = styles['Heading3']
     normal_style = styles['Normal']
     
-    story.append(Paragraph(f"MAHAGENCO Parli TPS - Staffing Report", title_style))
-    story.append(Paragraph(f"Type: {report_type} | Generated: {pd.Timestamp.now().strftime('%d-%b-%Y %H:%M')}", styles['Normal']))
-    story.append(Spacer(1, 25))
+    # --- Single Page Op Vacancy Report ---
+    if report_type == "Single Page Op Vacancy":
+        story.append(Paragraph(f"MAHAGENCO Parli TPS - Operation Vacancy Overview", title_style))
+        story.append(Paragraph(f"Generated: {pd.Timestamp.now().strftime('%d-%b-%Y %H:%M')}", normal_style))
+        story.append(Spacer(1, 15))
 
-    # GLOBAL SUMMARY
-    v_total, t_total, _ = get_global_metrics(ops_df, dept_df, "Global")
-    v_ops, t_ops, _ = get_global_metrics(ops_df, dept_df, "Ops")
-    v_dept, t_dept, _ = get_global_metrics(pd.DataFrame(), dept_df, "Dept")
-    
-    summary_data = [
-        ['Section', 'Total Vacancies', 'Total Transferred'],
-        ['Shift Operations (Inc. In-Charge)', v_ops, t_ops],
-        ['Departmental Staff', v_dept, t_dept],
-        ['TOTAL PLANT', v_total, t_total]
-    ]
-    t_sum = Table(summary_data, colWidths=[200, 100, 100])
-    t_sum.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1f2937')), ('TEXTCOLOR', (0,0), (-1,0), colors.white), ('GRID', (0,0), (-1,-1), 1, colors.black), ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), ('BACKGROUND', (0,-1), (-1,-1), colors.lightgrey), ('ALIGN', (0,0), (-1,-1), 'CENTER')]))
-    story.append(t_sum)
-    story.append(Spacer(1, 30))
-
-    if report_type == "PCR Vacancy":
-        story.append(Paragraph("PCR Vacancy & Visual Roster", styles['Heading2']))
+        # 1. Top Section: Shift In-Charge Anomalies
+        sic_df = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)]
+        sic_anomalies = sic_df[sic_df['Status'].isin(['VACANCY', 'Transferred'])] if not sic_df.empty else pd.DataFrame()
         
-        # 1. Shift In-Charge
-        sic_df = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)] if not dept_df.empty else pd.DataFrame()
-        if not sic_df.empty:
-            story.append(Paragraph("Shift In-Charge (EE)", heading_style))
-            u67 = ", ".join(sic_df[sic_df['Department'] == 'Shift In-Charge (U6&7)']['Staff_Name'].unique())
-            u8 = ", ".join(sic_df[sic_df['Department'] == 'Shift In-Charge (U8)']['Staff_Name'].unique())
-            sic_data = [['Unit 6 & 7 (Common)', u67], ['Unit 8', u8]]
-            t_sic = Table(sic_data, colWidths=[150, 450])
-            t_sic.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('BACKGROUND', (0,0), (0,-1), colors.lightgrey)]))
+        if not sic_anomalies.empty:
+            story.append(Paragraph("⚠️ Shift In-Charge (Attention Required)", heading_style))
+            sic_data = [['Unit', 'Name', 'Status']]
+            for _, r in sic_anomalies.iterrows():
+                unit = "Unit 6 & 7" if "U6&7" in r['Department'] else "Unit 8"
+                nm = format_staff_name(r['Staff_Name'])
+                st_txt = "TRANSFERRED" if r['Status'] == 'Transferred' else "VACANT"
+                sic_data.append([unit, nm, st_txt])
+            
+            t_sic = Table(sic_data, colWidths=[150, 300, 150])
+            t_sic.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.red),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('GRID', (0,0), (-1,-1), 1, colors.black),
+                ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
+                ('BACKGROUND', (0,1), (-1,-1), colors.white),
+                ('TEXTCOLOR', (0,1), (-1,-1), colors.black),
+            ]))
             story.append(t_sic)
             story.append(Spacer(1, 15))
 
-        # 2. Roster
+        # 2. Visual Roster (The Grid with Flags/Crosses)
         if not ops_df.empty:
+            story.append(Paragraph("Shift Operations Roster", heading_style))
             units = sorted(ops_df['Unit'].unique())
             desks = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
             main_data = [['Position'] + units]
@@ -238,97 +214,144 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
                 main_data.append(row)
             
             t_main = Table(main_data, colWidths=[120, 180, 180, 180])
-            t_main.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')), ('TEXTCOLOR', (0,0), (-1,0), colors.white), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'TOP'), ('FONTSIZE', (0,0), (-1,-1), 8)]))
+            t_main.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+                ('VALIGN', (0,0), (-1,-1), 'TOP'),
+                ('FONTSIZE', (0,0), (-1,-1), 8)
+            ]))
             story.append(t_main)
-            story.append(Spacer(1, 20))
+            story.append(Spacer(1, 15))
 
-        # 3. Requirement Summary
-        story.append(Paragraph("Requirement Summary (Shift Operations)", heading_style))
-        req_data = [['Desk / Section', 'Total Posts', 'Active', 'Vacant', 'Transferred']]
+        # 3. Bottom List: Vacancy & Transfer Details
+        story.append(Paragraph("Detailed Vacancy & Transfer List", heading_style))
+        # Filter for relevant rows
+        op_issues = ops_df[ops_df['Status'].isin(['VACANCY', 'Transferred'])].sort_values(['Unit', 'Desk'])
         
+        list_data = [['Unit', 'Desk', 'Name', 'Status']]
+        for _, r in op_issues.iterrows():
+            nm = format_staff_name(r['Staff_Name'])
+            list_data.append([r['Unit'], r['Desk'], nm, r['Status']])
+            
+        if len(list_data) > 1:
+            t_list = Table(list_data, colWidths=[80, 200, 250, 120])
+            t_list.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#4b5563')),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.whitesmoke, colors.white])
+            ]))
+            story.append(t_list)
+        else:
+            story.append(Paragraph("No other vacancies or transfers found in Shift Operations.", normal_style))
+
+    # --- OTHER REPORTS (Summary / Detailed) ---
+    else:
+        story.append(Paragraph(f"MAHAGENCO Parli TPS - Consolidated Staffing Report", title_style))
+        story.append(Paragraph(f"Type: {report_type} | Generated: {pd.Timestamp.now().strftime('%d-%b-%Y %H:%M')}", styles['Normal']))
+        story.append(Spacer(1, 20))
+
+        v_total, t_total, _ = get_global_metrics(ops_df, dept_df, "Global")
+        v_ops, t_ops, _ = get_global_metrics(ops_df, dept_df, "Ops")
+        v_dept, t_dept, _ = get_global_metrics(pd.DataFrame(), dept_df, "Dept")
+        
+        summary_data = [
+            ['Section', 'Total Vacancies', 'Total Transferred'],
+            ['Shift Operations (Inc. In-Charge)', v_ops, t_ops],
+            ['Departmental Staff', v_dept, t_dept],
+            ['TOTAL PLANT', v_total, t_total]
+        ]
+        t_sum = Table(summary_data, colWidths=[200, 100, 100])
+        t_sum.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1f2937')), ('TEXTCOLOR', (0,0), (-1,0), colors.white), ('GRID', (0,0), (-1,-1), 1, colors.black), ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), ('BACKGROUND', (0,-1), (-1,-1), colors.lightgrey), ('ALIGN', (0,0), (-1,-1), 'CENTER')]))
+        story.append(t_sum)
+        story.append(Spacer(1, 30))
+
+        # Content based on Type
+        story.append(Paragraph("1. Shift Operations (Main Plant)", styles['Heading2']))
+        
+        # SIC Table
+        sic_df = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)] if not dept_df.empty else pd.DataFrame()
         if not sic_df.empty:
-            v, t, s = calculate_metrics(sic_df)
-            req_data.append(['Shift In-Charge (EE)', len(sic_df), s.get('Active', 0), v, t])
+            story.append(Paragraph("Shift In-Charge (EE)", heading_style))
+            u67 = ", ".join(sic_df[sic_df['Department'] == 'Shift In-Charge (U6&7)']['Staff_Name'].unique())
+            u8 = ", ".join(sic_df[sic_df['Department'] == 'Shift In-Charge (U8)']['Staff_Name'].unique())
+            sic_data = [['Unit 6 & 7 (Common)', u67], ['Unit 8', u8]]
+            t_sic = Table(sic_data, colWidths=[150, 450])
+            t_sic.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('BACKGROUND', (0,0), (0,-1), colors.lightgrey)]))
+            story.append(t_sic)
+            story.append(Spacer(1, 10))
 
-        if not ops_df.empty:
-            groups = ops_df[ops_df['Desk']!='Shift In-Charge'].groupby('Desk')
-            for name, group in groups:
-                v, t, s = calculate_metrics(group)
-                req_data.append([name, len(group), s.get('Active', 0), v, t])
-        
-        t_req = Table(req_data, colWidths=[200, 80, 80, 80, 80])
-        t_req.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1f2937')), ('TEXTCOLOR', (0,0), (-1,0), colors.white), ('GRID', (0,0), (-1,-1), 1, colors.black), ('ALIGN', (1,0), (-1,-1), 'CENTER')]))
-        story.append(t_req)
+        if report_type == "Summary":
+            agg_data = [['Unit', 'Active Staff', 'Vacant', 'Transferred']]
+            if not ops_df.empty:
+                groups = ops_df.groupby('Unit')
+                for name, group in groups:
+                    v, t, s = calculate_metrics(group)
+                    agg_data.append([name, s.get('Active', 0), v, t])
+            t_agg = Table(agg_data, colWidths=[150, 100, 80, 100])
+            t_agg.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+            story.append(t_agg)
+        else: # Detailed
+            if not ops_df.empty:
+                units = sorted(ops_df['Unit'].unique())
+                desks = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
+                main_data = [['Position'] + units]
+                for desk in desks:
+                    row = [desk]
+                    for u in units:
+                        matches = ops_df[(ops_df['Unit'] == u) & (ops_df['Desk'] == desk)]
+                        if matches.empty: row.append("-")
+                        else:
+                            names = []
+                            for _, r in matches.iterrows():
+                                nm = format_staff_name(r['Staff_Name'])
+                                if r['Status'] == 'VACANCY': nm = "VACANT"
+                                elif r['Status'] == 'Transferred': nm = f"{nm} (Trf)"
+                                names.append(nm)
+                            row.append("\n".join(names))
+                    main_data.append(row)
+                t_main = Table(main_data, colWidths=[120, 180, 180, 180])
+                t_main.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')), ('TEXTCOLOR', (0,0), (-1,0), colors.white), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('FONTSIZE', (0,0), (-1,-1), 8)]))
+                story.append(t_main)
 
-    elif report_type == "Summary":
-        story.append(Paragraph("1. Shift Operations Summary", styles['Heading2']))
-        agg_data = [['Unit', 'Active', 'Vacant', 'Transferred']]
-        if not ops_df.empty:
-            groups = ops_df[ops_df['Desk']!='Shift In-Charge'].groupby('Unit')
-            for name, group in groups:
-                v, t, s = calculate_metrics(group)
-                agg_data.append([name, s.get('Active', 0), v, t])
-        t_agg = Table(agg_data, colWidths=[150, 100, 80, 100])
-        t_agg.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
-        story.append(t_agg)
-        
-        story.append(Paragraph("2. Departmental Summary", styles['Heading2']))
-        if not dept_df.empty:
-            agg_data_d = [['Department', 'Active', 'Vacant', 'Transferred']]
-            groups_d = dept_df.groupby('Department')
-            for name, group in groups_d:
-                v, t, s = calculate_metrics(group)
-                agg_data_d.append([name, s.get('Active', 0), v, t])
-            t_agg_d = Table(agg_data_d, colWidths=[250, 100, 80, 100])
-            t_agg_d.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
-            story.append(t_agg_d)
-
-    else: # Detailed
-        story.append(Paragraph("Shift Operations Roster", styles['Heading2']))
-        if not ops_df.empty:
-            units = sorted(ops_df['Unit'].unique())
-            desks = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
-            main_data = [['Position'] + units]
-            for desk in desks:
-                row = [desk]
-                for u in units:
-                    matches = ops_df[(ops_df['Unit'] == u) & (ops_df['Desk'] == desk)]
-                    if matches.empty: row.append("-")
-                    else:
-                        names = []
-                        for _, r in matches.iterrows():
-                            nm = format_staff_name(r['Staff_Name'])
-                            if r['Status'] == 'VACANCY': nm = "VACANT"
-                            elif r['Status'] == 'Transferred': nm = f"{nm} (Trf)"
-                            names.append(nm)
-                        row.append("\n".join(names))
-                main_data.append(row)
-            t_main = Table(main_data, colWidths=[120, 180, 180, 180])
-            t_main.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')), ('TEXTCOLOR', (0,0), (-1,0), colors.white), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('FONTSIZE', (0,0), (-1,-1), 8)]))
-            story.append(t_main)
-        
         story.append(PageBreak())
-        story.append(Paragraph("Departmental Staff", styles['Heading2']))
+        story.append(Paragraph("2. Departmental Staff", styles['Heading2']))
+        
         if not dept_df.empty:
-            depts = sorted(dept_df['Department'].unique())
-            for d in depts:
-                group = dept_df[dept_df['Department'] == d]
-                if group.empty: continue
-                story.append(Paragraph(f"{d} ({len(group)})", heading_style))
-                d_data = [['Name', 'Designation', 'Status']]
-                group = group.copy()
-                group['Rank'] = group['Designation'].apply(get_rank_level)
-                group = group.sort_values('Rank')
-                for _, r in group.iterrows():
-                    d_data.append([format_staff_name(r['Staff_Name']), str(r['Designation']), r['Status']])
-                t_dept = Table(d_data, colWidths=[250, 150, 100])
-                t_dept.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
-                story.append(t_dept)
-                story.append(Spacer(1, 15))
+            if report_type == "Summary":
+                agg_data = [['Department', 'Active Staff', 'Vacant', 'Transferred']]
+                groups = dept_df.groupby('Department')
+                for name, group in groups:
+                    v, t, s = calculate_metrics(group)
+                    agg_data.append([name, s.get('Active', 0), v, t])
+                t_agg = Table(agg_data, colWidths=[250, 100, 80, 100])
+                t_agg.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+                story.append(t_agg)
+            else:
+                depts = sorted(dept_df['Department'].unique())
+                for d in depts:
+                    group = dept_df[dept_df['Department'] == d]
+                    if group.empty: continue
+                    story.append(Paragraph(f"{d} ({len(group)})", heading_style))
+                    d_data = [['Name', 'Designation', 'Status']]
+                    group = group.copy()
+                    group['Rank'] = group['Designation'].apply(get_rank_level)
+                    group = group.sort_values('Rank')
+                    for _, r in group.iterrows():
+                        d_data.append([format_staff_name(r['Staff_Name']), str(r['Designation']), r['Status']])
+                    t_dept = Table(d_data, colWidths=[250, 150, 100])
+                    t_dept.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+                    story.append(t_dept)
+                    story.append(Spacer(1, 15))
 
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
+
+# --- LOAD DATA ---
+ops_df = load_data(OPS_FILE)
+dept_df = load_data(DEPT_FILE)
 
 # --- HEADER & NAVIGATION ---
 st.title("⚡ Mahagenco Staffing Portal")
@@ -342,9 +365,6 @@ st.sidebar.markdown("---")
 st.sidebar.header("Report Options")
 report_type = st.sidebar.radio("PDF Type", ["Summary (Numbers)", "Detailed (Names)", "PCR Vacancy"])
 
-ops_df = load_data(OPS_FILE)
-dept_df = load_data(DEPT_FILE)
-
 if st.sidebar.button("📄 Generate PDF Report"):
     with st.spinner("Generating..."):
         if ops_df.empty and dept_df.empty:
@@ -353,7 +373,7 @@ if st.sidebar.button("📄 Generate PDF Report"):
             pdf_bytes = generate_combined_pdf(ops_df, dept_df, report_type)
             st.sidebar.download_button("⬇️ Download PDF", pdf_bytes, f"Report_{report_type.replace(' ','_')}.pdf", "application/pdf")
 
-view_mode = st.radio("", [VIEW_OPS, VIEW_DEPT], horizontal=True, label_visibility="collapsed")
+view_mode = st.radio("", [VIEW_OPS, VIEW_DEPT], horizontal=True, label_visibility="collapsed", key='view_mode')
 active_df = ops_df if view_mode == VIEW_OPS else dept_df
 
 st.markdown("---")
