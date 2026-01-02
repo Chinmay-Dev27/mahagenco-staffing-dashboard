@@ -13,6 +13,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.graphics.shapes import Drawing, Line, Polygon
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Mahagenco Parli Ops", page_icon="⚡", layout="wide")
@@ -104,6 +105,19 @@ def get_rank_level(desg):
     if 'JE' in d or 'JUNIOR' in d: return 5
     return 6
 
+# --- GRAPHIC HELPERS FOR PDF ---
+def draw_red_cross():
+    d = Drawing(10, 10)
+    d.add(Line(1, 1, 9, 9, strokeColor=colors.red, strokeWidth=2))
+    d.add(Line(1, 9, 9, 1, strokeColor=colors.red, strokeWidth=2))
+    return d
+
+def draw_orange_flag():
+    d = Drawing(10, 10)
+    d.add(Line(2, 0, 2, 10, strokeColor=colors.black, strokeWidth=1))
+    d.add(Polygon([2, 10, 9, 7, 2, 4], fillColor=colors.orange, strokeWidth=0))
+    return d
+
 # --- HELPER: CALCULATE METRICS (DEDUPLICATED) ---
 def get_global_metrics(ops_df, dept_df, scope="Global"):
     dfs_to_combine = []
@@ -116,7 +130,6 @@ def get_global_metrics(ops_df, dept_df, scope="Global"):
         if scope == "Global":
             dfs_to_combine.append(dept_df[['Staff_Name', 'Status']])
         elif scope == "Ops":
-            # Include Shift In-Charge from Dept file into Ops metrics
             sic_only = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)][['Staff_Name', 'Status']]
             dfs_to_combine.append(sic_only)
         elif scope == "Dept":
@@ -126,17 +139,9 @@ def get_global_metrics(ops_df, dept_df, scope="Global"):
         return 0, 0, pd.Series()
 
     combined = pd.concat(dfs_to_combine)
-    
-    # FILTER VACANT
     staff_only = combined[combined['Staff_Name'].str.contains("VACANT", case=False) == False].copy()
-    
-    # NORMALIZE NAMES (Trim whitespace to ensure matching)
     staff_only['Staff_Name'] = staff_only['Staff_Name'].astype(str).str.strip()
-
-    # PRIORITIZE TRANSFERRED
     staff_only['Status_Rank'] = staff_only['Status'].apply(lambda x: 2 if 'Transferred' in str(x) else 1)
-    
-    # SORT & DEDUPLICATE
     staff_only = staff_only.sort_values(by=['Staff_Name', 'Status_Rank'], ascending=[True, False])
     unique_staff = staff_only.drop_duplicates(subset=['Staff_Name'], keep='first')
     
@@ -149,7 +154,7 @@ def get_global_metrics(ops_df, dept_df, scope="Global"):
     return vacant, transferred, status_counts
 
 # --- UNIFIED PDF ENGINE ---
-def generate_pdf_report_lab(ops_df, dept_df):
+def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
@@ -158,9 +163,9 @@ def generate_pdf_report_lab(ops_df, dept_df):
     heading_style = styles['Heading3']
     normal_style = styles['Normal']
     
-    story.append(Paragraph(f"MAHAGENCO Parli TPS - Consolidated Staffing Report", title_style))
-    story.append(Paragraph(f"Generated: {pd.Timestamp.now().strftime('%d-%b-%Y %H:%M')}", normal_style))
-    story.append(Spacer(1, 20))
+    story.append(Paragraph(f"MAHAGENCO Parli TPS - Staffing Report", title_style))
+    story.append(Paragraph(f"Type: {report_type} | Generated: {pd.Timestamp.now().strftime('%d-%b-%Y %H:%M')}", styles['Normal']))
+    story.append(Spacer(1, 25))
 
     # --- PART 1: GLOBAL SUMMARY ---
     v_total, t_total, _ = get_global_metrics(ops_df, dept_df, "Global")
@@ -173,72 +178,165 @@ def generate_pdf_report_lab(ops_df, dept_df):
         ['Departmental Staff', v_dept, t_dept],
         ['TOTAL PLANT', v_total, t_total]
     ]
-    t_sum = Table(summary_data, colWidths=[250, 120, 120])
+    t_sum = Table(summary_data, colWidths=[200, 100, 100])
     t_sum.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1f2937')), ('TEXTCOLOR', (0,0), (-1,0), colors.white), ('GRID', (0,0), (-1,-1), 1, colors.black), ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'), ('BACKGROUND', (0,-1), (-1,-1), colors.lightgrey)]))
     story.append(t_sum)
     story.append(Spacer(1, 30))
 
-    # --- PART 2: SHIFT OPERATIONS ---
-    story.append(Paragraph("1. Shift Operations (Main Plant)", styles['Heading2']))
-    
-    # Shift In-Charge
-    sic_df = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)] if not dept_df.empty else pd.DataFrame()
-    if not sic_df.empty:
-        story.append(Paragraph("Shift In-Charge (EE)", heading_style))
-        u67 = ", ".join(sic_df[sic_df['Department'] == 'Shift In-Charge (U6&7)']['Staff_Name'].unique())
-        u8 = ", ".join(sic_df[sic_df['Department'] == 'Shift In-Charge (U8)']['Staff_Name'].unique())
-        sic_data = [['Unit 6 & 7 (Common)', u67], ['Unit 8', u8]]
-        t_sic = Table(sic_data, colWidths=[150, 450])
-        t_sic.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('BACKGROUND', (0,0), (0,-1), colors.lightgrey)]))
-        story.append(t_sic)
-        story.append(Spacer(1, 10))
-
-    if not ops_df.empty:
-        units = sorted(ops_df['Unit'].unique())
-        desks = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
-        main_data = [['Position'] + units]
-        for desk in desks:
-            row = [desk]
-            for u in units:
-                matches = ops_df[(ops_df['Unit'] == u) & (ops_df['Desk'] == desk)]
-                if matches.empty: row.append("-")
-                else:
-                    names = []
-                    for _, r in matches.iterrows():
-                        nm = format_staff_name(r['Staff_Name'])
-                        if r['Status'] == 'VACANCY': nm = "VACANT"
-                        elif r['Status'] == 'Transferred': nm = f"{nm} (Trf)"
-                        names.append(nm)
-                    row.append("\n".join(names))
-            main_data.append(row)
-        t_main = Table(main_data, colWidths=[120, 180, 180, 180])
-        t_main.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')), ('TEXTCOLOR', (0,0), (-1,0), colors.white), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('FONTSIZE', (0,0), (-1,-1), 8)]))
-        story.append(t_main)
-
-    story.append(PageBreak())
-
-    # --- PART 3: DEPARTMENTAL STAFF ---
-    story.append(Paragraph("2. Departmental Staff List", styles['Heading2']))
-    if not dept_df.empty:
-        depts = sorted(dept_df['Department'].unique())
-        for d in depts:
-            group = dept_df[dept_df['Department'] == d]
-            if group.empty: continue
-            story.append(Paragraph(f"{d} ({len(group)})", heading_style))
-            d_data = [['Name', 'Designation', 'Status']]
-            group = group.copy()
-            group['Rank'] = group['Designation'].apply(get_rank_level)
-            group = group.sort_values('Rank')
-            for _, r in group.iterrows():
-                d_data.append([format_staff_name(r['Staff_Name']), str(r['Designation']), r['Status']])
-            t_dept = Table(d_data, colWidths=[250, 150, 100])
-            t_dept.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
-            story.append(t_dept)
+    if report_type == "PCR Vacancy":
+        story.append(Paragraph("PCR Vacancy & Visual Roster", styles['Heading2']))
+        
+        # 1. Shift In-Charge
+        sic_df = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)] if not dept_df.empty else pd.DataFrame()
+        if not sic_df.empty:
+            story.append(Paragraph("Shift In-Charge (EE)", heading_style))
+            u67 = ", ".join(sic_df[sic_df['Department'] == 'Shift In-Charge (U6&7)']['Staff_Name'].unique())
+            u8 = ", ".join(sic_df[sic_df['Department'] == 'Shift In-Charge (U8)']['Staff_Name'].unique())
+            sic_data = [['Unit 6 & 7 (Common)', u67], ['Unit 8', u8]]
+            t_sic = Table(sic_data, colWidths=[150, 450])
+            t_sic.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('BACKGROUND', (0,0), (0,-1), colors.lightgrey)]))
+            story.append(t_sic)
             story.append(Spacer(1, 15))
+
+        # 2. Visual Roster
+        if not ops_df.empty:
+            units = sorted(ops_df['Unit'].unique())
+            desks = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
+            main_data = [['Position'] + units]
+            
+            for desk in desks:
+                row = [desk]
+                for u in units:
+                    matches = ops_df[(ops_df['Unit'] == u) & (ops_df['Desk'] == desk)]
+                    if matches.empty: row.append("-")
+                    else:
+                        cell_content = []
+                        for _, r in matches.iterrows():
+                            nm = format_staff_name(r['Staff_Name'])
+                            if r['Status'] == 'VACANCY':
+                                cell_content.append(Table([[draw_red_cross(), Paragraph("<b>VACANT</b>", normal_style)]], colWidths=[15, 80]))
+                            elif r['Status'] == 'Transferred':
+                                cell_content.append(Table([[draw_orange_flag(), Paragraph(f"<i>{nm}</i>", normal_style)]], colWidths=[15, 80]))
+                            else:
+                                cell_content.append(Paragraph(nm, normal_style))
+                        row.append(cell_content)
+                main_data.append(row)
+            
+            t_main = Table(main_data, colWidths=[120, 180, 180, 180])
+            t_main.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')), ('TEXTCOLOR', (0,0), (-1,0), colors.white), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('VALIGN', (0,0), (-1,-1), 'TOP'), ('FONTSIZE', (0,0), (-1,-1), 8)]))
+            story.append(t_main)
+            story.append(Spacer(1, 20))
+
+        # 3. Requirement Summary (The "New Table")
+        story.append(Paragraph("Requirement Summary (Shift Operations)", heading_style))
+        req_data = [['Desk / Section', 'Total Posts', 'Active', 'Vacant', 'Transferred']]
+        
+        # In-Charge Summary
+        if not sic_df.empty:
+            sic_v, sic_t, sic_s = calculate_metrics(sic_df) # Use local helper
+            sic_act = sic_s.get('Active', 0)
+            req_data.append(['Shift In-Charge (EE)', len(sic_df), sic_act, sic_v, sic_t])
+
+        # Desk Summary
+        if not ops_df.empty:
+            groups = ops_df[ops_df['Desk']!='Shift In-Charge'].groupby('Desk')
+            for name, group in groups:
+                v, t, s = calculate_metrics(group) # Use local helper
+                act = s.get('Active', 0)
+                req_data.append([name, len(group), act, v, t])
+        
+        t_req = Table(req_data, colWidths=[200, 80, 80, 80, 80])
+        t_req.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1f2937')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('GRID', (0,0), (-1,-1), 1, colors.black),
+            ('ALIGN', (1,0), (-1,-1), 'CENTER'),
+        ]))
+        story.append(t_req)
+
+    # --- PART 3: SUMMARY OR DETAILED DEFAULT ---
+    elif report_type == "Summary":
+        story.append(Paragraph("1. Shift Operations Summary", styles['Heading2']))
+        agg_data = [['Unit', 'Active Staff', 'Vacant', 'Transferred']]
+        if not ops_df.empty:
+            groups = ops_df[ops_df['Desk']!='Shift In-Charge'].groupby('Unit')
+            for name, group in groups:
+                v, t, s = calculate_metrics(group)
+                active = s.get('Active', 0) if 'Active' in s else 0
+                agg_data.append([name, active, v, t])
+        t_agg = Table(agg_data, colWidths=[150, 100, 80, 100])
+        t_agg.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+        story.append(t_agg)
+        
+        story.append(Paragraph("2. Departmental Summary", styles['Heading2']))
+        if not dept_df.empty:
+            agg_data_d = [['Department', 'Active Staff', 'Vacant', 'Transferred']]
+            groups_d = dept_df.groupby('Department')
+            for name, group in groups_d:
+                v, t, s = calculate_metrics(group)
+                active = s.get('Active', 0) if 'Active' in s else 0
+                agg_data_d.append([name, active, v, t])
+            t_agg_d = Table(agg_data_d, colWidths=[250, 100, 80, 100])
+            t_agg_d.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+            story.append(t_agg_d)
+
+    else: # Detailed (Names) - Original logic
+        story.append(Paragraph("1. Shift Operations (Main Plant)", styles['Heading2']))
+        if not ops_df.empty:
+            units = sorted(ops_df['Unit'].unique())
+            desks = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
+            main_data = [['Position'] + units]
+            for desk in desks:
+                row = [desk]
+                for u in units:
+                    matches = ops_df[(ops_df['Unit'] == u) & (ops_df['Desk'] == desk)]
+                    if matches.empty: row.append("-")
+                    else:
+                        names = []
+                        for _, r in matches.iterrows():
+                            nm = format_staff_name(r['Staff_Name'])
+                            if r['Status'] == 'VACANCY': nm = "VACANT"
+                            elif r['Status'] == 'Transferred': nm = f"{nm} (Trf)"
+                            names.append(nm)
+                        row.append("\n".join(names))
+                main_data.append(row)
+            t_main = Table(main_data, colWidths=[120, 180, 180, 180])
+            t_main.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')), ('TEXTCOLOR', (0,0), (-1,0), colors.white), ('GRID', (0,0), (-1,-1), 0.5, colors.black), ('FONTSIZE', (0,0), (-1,-1), 8)]))
+            story.append(t_main)
+        
+        story.append(PageBreak())
+        story.append(Paragraph("2. Departmental Staff", styles['Heading2']))
+        if not dept_df.empty:
+            depts = sorted(dept_df['Department'].unique())
+            for d in depts:
+                group = dept_df[dept_df['Department'] == d]
+                if group.empty: continue
+                story.append(Paragraph(f"{d} ({len(group)})", heading_style))
+                d_data = [['Name', 'Designation', 'Status']]
+                group = group.copy()
+                group['Rank'] = group['Designation'].apply(get_rank_level)
+                group = group.sort_values('Rank')
+                for _, r in group.iterrows():
+                    d_data.append([format_staff_name(r['Staff_Name']), str(r['Designation']), r['Status']])
+                t_dept = Table(d_data, colWidths=[250, 150, 100])
+                t_dept.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+                story.append(t_dept)
+                story.append(Spacer(1, 15))
 
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
+
+# --- LOCAL METRIC HELPER FOR PDF ---
+def calculate_metrics_local(df):
+    if df.empty: return 0, 0, pd.Series()
+    staff_only = df[df['Staff_Name'].str.contains("VACANT", case=False) == False]
+    unique_staff = staff_only.drop_duplicates(subset=['Staff_Name'])
+    transferred = len(unique_staff[unique_staff['Status'] == 'Transferred'])
+    vacant = len(df[df['Status'] == 'VACANCY'])
+    status_counts = unique_staff['Status'].value_counts()
+    if vacant > 0: status_counts['VACANCY'] = vacant
+    return vacant, transferred, status_counts
 
 # --- LOAD DATA ---
 ops_df = load_data(OPS_FILE)
@@ -252,13 +350,16 @@ if st.sidebar.button("🔄 Refresh Data"):
     st.rerun()
 
 st.sidebar.markdown("---")
-if st.sidebar.button("📄 Generate Report (PDF)"):
+st.sidebar.header("Report Options")
+report_type = st.sidebar.radio("PDF Type", ["Summary (Numbers)", "Detailed (Names)", "PCR Vacancy"])
+
+if st.sidebar.button("📄 Generate Combined PDF"):
     with st.spinner("Generating..."):
         if ops_df.empty and dept_df.empty:
             st.sidebar.error("No data available.")
         else:
-            pdf_bytes = generate_pdf_report_lab(ops_df, dept_df)
-            st.sidebar.download_button("⬇️ Download PDF", pdf_bytes, "Staffing_Report.pdf", "application/pdf")
+            pdf_bytes = generate_combined_pdf(ops_df, dept_df, report_type=report_type)
+            st.sidebar.download_button("⬇️ Download PDF", pdf_bytes, f"Staff_Report_{report_type.replace(' ','_')}.pdf", "application/pdf")
 
 view_mode = st.radio("", [VIEW_OPS, VIEW_DEPT], horizontal=True, label_visibility="collapsed", key='view_mode')
 active_df = ops_df if view_mode == VIEW_OPS else dept_df
@@ -272,10 +373,7 @@ with tab1:
         if ops_df.empty:
             st.error("Data Missing for Shift Ops.")
         else:
-            # FIX: Define op_df properly for the view
             op_df = ops_df[ops_df['Desk'] != 'Shift In-Charge']
-            
-            # Metric Calculation with Deduplication
             vacant_count, transferred_count, status_counts = get_global_metrics(ops_df, dept_df, "Ops")
             
             c1, c2, c3 = st.columns([1, 1.5, 1.2])
@@ -301,17 +399,12 @@ with tab1:
                 m1.metric("Shortage", vacant_count)
                 m2.metric("Transferred", transferred_count)
 
-            # --- Shift In-Charge (Fetched from Dept DF) ---
+            # Shift In-Charge
             st.subheader("👨‍✈️ Shift In-Charge (EE)")
             sic_dept = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)]
-            
             if not sic_dept.empty:
-                u67_rows = sic_dept[sic_dept['Department'] == 'Shift In-Charge (U6&7)']
-                u8_rows = sic_dept[sic_dept['Department'] == 'Shift In-Charge (U8)']
-                
-                u67_names = u67_rows['Staff_Name'].unique()
-                u8_names = u8_rows['Staff_Name'].unique()
-                
+                u67_names = sic_dept[sic_dept['Department'] == 'Shift In-Charge (U6&7)']['Staff_Name'].unique()
+                u8_names = sic_dept[sic_dept['Department'] == 'Shift In-Charge (U8)']['Staff_Name'].unique()
                 sic_data = []
                 max_len = max(len(u67_names), len(u8_names))
                 for i in range(max_len):
@@ -319,23 +412,16 @@ with tab1:
                     if i < len(u67_names):
                         nm = u67_names[i]
                         n67 = format_staff_name(nm)
-                        stat = u67_rows[u67_rows['Staff_Name'] == nm]['Status'].values
+                        stat = sic_dept[sic_dept['Staff_Name'] == nm]['Status'].values
                         s67_icon = "🟠" if "Transferred" in stat else "🟢"
-
                     n8, s8_icon = "", ""
                     if i < len(u8_names):
                         nm = u8_names[i]
                         n8 = format_staff_name(nm)
-                        stat = u8_rows[u8_rows['Staff_Name'] == nm]['Status'].values
+                        stat = sic_dept[sic_dept['Staff_Name'] == nm]['Status'].values
                         s8_icon = "🟠" if "Transferred" in stat else "🟢"
-                    
-                    sic_data.append({
-                        "Unit 6 & 7 (Common Pool)": f"{s67_icon} {n67}",
-                        "Unit 8": f"{s8_icon} {n8}"
-                    })
+                    sic_data.append({"Unit 6 & 7 (Common Pool)": f"{s67_icon} {n67}", "Unit 8": f"{s8_icon} {n8}"})
                 st.dataframe(pd.DataFrame(sic_data), use_container_width=True, hide_index=True)
-            else:
-                st.info("Shift In-Charge data not found in Department file.")
             
             st.divider()
 
@@ -361,7 +447,6 @@ with tab1:
             st.write(pd.DataFrame(table_data).to_html(escape=False, index=False, classes="table table-bordered"), unsafe_allow_html=True)
 
     else:
-        # --- DEPT DASHBOARD ---
         if dept_df.empty:
             st.error("Data Missing.")
         else:
@@ -403,7 +488,6 @@ with tab1:
                             status_icon = "🔴" if row['Status'] == 'VACANCY' else "🟠" if row['Status'] == 'Transferred' else "🟢"
                             cols[i % 3].markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;{status_icon} **{name}**")
 
-            # 1. Shift In-Charge (Grouped)
             if sic_folders:
                 sic_total = sum([len(active_df[active_df['Department'] == d]) for d in sic_folders])
                 with st.expander(f"👨‍✈️ Shift In-Charge (Total: {sic_total})", expanded=False):
@@ -411,25 +495,20 @@ with tab1:
                         st.markdown(f"**{d}**")
                         render_hierarchy(active_df[active_df['Department'] == d])
 
-            # 2. Main Plant Ops (Grouped)
             if ops_folders:
                 ops_total = sum([len(active_df[active_df['Department'] == d]) for d in ops_folders])
                 with st.expander(f"🏭 Main Plant PCR Staff (Total: {ops_total})", expanded=False):
                     ops_tabs = st.tabs([d.replace("Main Plant Ops - ", "") for d in ops_folders])
                     for i, dept_name in enumerate(ops_folders):
-                        with ops_tabs[i]:
-                            render_hierarchy(active_df[active_df['Department'] == dept_name])
+                        with ops_tabs[i]: render_hierarchy(active_df[active_df['Department'] == dept_name])
 
-            # 3. Coal Handling Plant (Grouped)
             if chp_folders:
                 chp_total = sum([len(active_df[active_df['Department'] == d]) for d in chp_folders])
                 with st.expander(f"🏭 Coal Handling Plant (Total: {chp_total})", expanded=False):
                     chp_tabs = st.tabs([d.replace("CHP", "").strip() for d in chp_folders])
                     for i, dept_name in enumerate(chp_folders):
-                        with chp_tabs[i]:
-                            render_hierarchy(active_df[active_df['Department'] == dept_name])
+                        with ops_tabs[i]: render_hierarchy(active_df[active_df['Department'] == dept_name])
 
-            # 4. Standard Folders
             for dept_name in standard_folders:
                 group = active_df[active_df['Department'] == dept_name]
                 if group.empty: continue
@@ -440,44 +519,35 @@ with tab2:
     st.header("Search & Reports")
     search_tabs = st.tabs(["⚡ Shift Operations Search", "🏢 Departmental Staff Search"])
     
-    # 1. OPS SEARCH
     with search_tabs[0]:
         st.subheader("Search in Shift Operations")
         c_op1, c_op2 = st.columns(2)
         s_unit = c_op1.selectbox("Filter Unit", ["All"] + sorted(ops_df['Unit'].unique().tolist()), key="s_unit")
         s_desk = c_op2.selectbox("Filter Desk", ["All"] + sorted(ops_df['Desk'].unique().tolist()), key="s_desk")
-        
         ops_filtered = ops_df.copy()
         if s_unit != "All": ops_filtered = ops_filtered[ops_filtered['Unit'] == s_unit]
         if s_desk != "All": ops_filtered = ops_filtered[ops_filtered['Desk'] == s_desk]
-        
         if not ops_filtered.empty:
             c1, c2 = st.columns(2)
             with c1:
-                # Deduplicated calculation for search results
                 _, _, s_counts = get_global_metrics(ops_filtered, pd.DataFrame(), "Ops")
                 if not s_counts.empty:
-                    fig_s = px.pie(values=s_counts.values, names=s_counts.index, color=s_counts.index, 
-                                   color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96'}, title="Status Distribution", height=250)
+                    fig_s = px.pie(values=s_counts.values, names=s_counts.index, color=s_counts.index, color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96'}, title="Status", height=250)
                     st.plotly_chart(fig_s, use_container_width=True)
             st.dataframe(ops_filtered[['Unit', 'Desk', 'Staff_Name', 'Status']], use_container_width=True, hide_index=True)
         else: st.info("No records found.")
 
-    # 2. DEPT SEARCH
     with search_tabs[1]:
         st.subheader("Search in Departments")
         s_dept = st.selectbox("Filter Department", ["All"] + sorted(dept_df['Department'].unique().tolist()), key="s_dept")
-        
         dept_filtered = dept_df.copy()
         if s_dept != "All": dept_filtered = dept_filtered[dept_filtered['Department'] == s_dept]
-        
         if not dept_filtered.empty:
             c1, c2 = st.columns(2)
             with c1:
                 _, _, s_counts = get_global_metrics(pd.DataFrame(), dept_filtered, "Dept")
                 if not s_counts.empty:
-                    fig_s = px.pie(values=s_counts.values, names=s_counts.index, color=s_counts.index, 
-                                   color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96'}, title="Status Distribution", height=250)
+                    fig_s = px.pie(values=s_counts.values, names=s_counts.index, color=s_counts.index, color_discrete_map={'VACANCY':'#ff4b4b', 'Transferred':'#ffa421', 'Active':'#00CC96'}, title="Status", height=250)
                     st.plotly_chart(fig_s, use_container_width=True)
             with c2:
                 d_counts = dept_filtered['Designation'].value_counts().head(5)
@@ -498,13 +568,10 @@ with tab3:
         if st.button("Logout"):
             st.session_state.admin_logged_in=False
             st.rerun()
-            
         st.write(f"Editing: **{view_mode}**")
         working_df = ops_df if view_mode == VIEW_OPS else dept_df
         target_file = OPS_FILE if view_mode == VIEW_OPS else DEPT_FILE
-        
-        if working_df.empty:
-            st.error("Cannot edit empty dataset.")
+        if working_df.empty: st.error("Cannot edit empty dataset.")
         else:
             act = st.selectbox("Action", ["Change Status", "Add Person"])
             if act == "Change Status":
@@ -515,7 +582,6 @@ with tab3:
                 else:
                     dept = st.selectbox("Department", working_df['Department'].unique())
                     p_list = working_df[working_df['Department']==dept]
-                
                 if not p_list.empty:
                     p = st.selectbox("Person", p_list['Staff_Name'].unique())
                     s = st.selectbox("New Status", ["Active", "Transferred", "VACANCY"])
