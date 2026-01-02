@@ -349,10 +349,6 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
     buffer.seek(0)
     return buffer.getvalue()
 
-# --- LOAD DATA ---
-ops_df = load_data(OPS_FILE)
-dept_df = load_data(DEPT_FILE)
-
 # --- HEADER & NAVIGATION ---
 st.title("⚡ Mahagenco Staffing Portal")
 
@@ -363,7 +359,10 @@ if st.sidebar.button("🔄 Refresh Data"):
 
 st.sidebar.markdown("---")
 st.sidebar.header("Report Options")
-report_type = st.sidebar.radio("PDF Type", ["Summary (Numbers)", "Detailed (Names)", "PCR Vacancy"])
+report_type = st.sidebar.radio("PDF Type", ["Summary (Numbers)", "Detailed (Names)", "Single Page Op Vacancy"])
+
+ops_df = load_data(OPS_FILE)
+dept_df = load_data(DEPT_FILE)
 
 if st.sidebar.button("📄 Generate PDF Report"):
     with st.spinner("Generating..."):
@@ -373,7 +372,7 @@ if st.sidebar.button("📄 Generate PDF Report"):
             pdf_bytes = generate_combined_pdf(ops_df, dept_df, report_type)
             st.sidebar.download_button("⬇️ Download PDF", pdf_bytes, f"Report_{report_type.replace(' ','_')}.pdf", "application/pdf")
 
-view_mode = st.radio("", [VIEW_OPS, VIEW_DEPT], horizontal=True, label_visibility="collapsed", key='view_mode')
+view_mode = st.radio("", [VIEW_OPS, VIEW_DEPT], horizontal=True, label_visibility="collapsed")
 active_df = ops_df if view_mode == VIEW_OPS else dept_df
 
 st.markdown("---")
