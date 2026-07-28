@@ -770,6 +770,23 @@ with tab3:
                     st.dataframe(transferred_now[cols_to_show], use_container_width=True, hide_index=True)
                     st.caption("Once someone actually exits, come back here and use 'Mark position VACANT now' to open the slot.")
 
+                st.divider()
+                st.markdown("##### Delete an existing vacant slot")
+                st.caption("Use this if a desk/department has one vacancy too many (e.g. it only ever needs 4 people, not 5) and you want the empty slot gone entirely — not just filled.")
+                vacancies_del = working_df[working_df['Status'] == 'VACANCY'].copy()
+                if vacancies_del.empty:
+                    st.caption("No vacant slots to delete.")
+                else:
+                    vacancies_del['__label'] = vacancies_del.apply(location_of, axis=1)
+                    del_label = st.selectbox("Vacant slot", vacancies_del['__label'], key="del_vacancy_select")
+                    del_idx = vacancies_del[vacancies_del['__label'] == del_label].index[0]
+                    if st.button("🗑️ Delete this vacant slot", key="del_vacancy_btn"):
+                        working_df = working_df.drop(index=del_idx).reset_index(drop=True)
+                        save_local(working_df, target_file)
+                        update_github(working_df, target_file)
+                        st.success("Vacant slot deleted.")
+                        st.rerun()
+
             # =========================================================
             # 4. ADD NEW EMPLOYEE — brand-new joiner, not a transfer
             # =========================================================
