@@ -721,20 +721,33 @@ with tab3:
                             st.error("Name is required.")
 
             # =========================================================
-            # 3. MARK VACANT / REMOVE — take someone out of a position
+            # 3. MARK VACANT / TRANSFERRED / REMOVE — take someone out of
+            #    a position, or flag that their exit is pending.
             # =========================================================
             elif action == "🕳️ Mark Vacant / Remove":
-                st.subheader("Vacate or remove a position")
-                occupied = working_df[(working_df['Status'] != 'VACANCY') & (~working_df['Staff_Name'].str.upper().str.contains("VACANT"))].copy()
+                st.subheader("Vacate, flag a pending transfer, or remove a position")
+                occupied = working_df[(working_df['Status'].isin(['Active', 'Transferred'])) & (~working_df['Staff_Name'].str.upper().str.contains("VACANT"))].copy()
                 if occupied.empty:
                     st.info("No active employees found.")
                 else:
                     occupied['__label'] = occupied.apply(person_label, axis=1)
                     sel_label = st.selectbox("Employee", occupied['__label'])
                     sel_idx = occupied[occupied['__label'] == sel_label].index[0]
-                    choice = st.radio("Action", ["Mark position VACANT (they left / on transfer out)", "Remove this row entirely (position no longer exists)"])
+                    current_status = working_df.at[sel_idx, 'Status']
+                    choice = st.radio(
+                        "Action",
+                        [
+                            "Mark as Transferred (order issued — still working here for now, will create a vacancy later)",
+                            "Mark position VACANT now (they've actually left)",
+                            "Remove this row entirely (position no longer exists)",
+                        ],
+                        index=0 if current_status != 'Transferred' else 0
+                    )
                     if st.button("Confirm", type="primary"):
-                        if choice.startswith("Mark"):
+                        if choice.startswith("Mark as Transferred"):
+                            working_df.at[sel_idx, 'Status'] = "Transferred"
+                            msg = "Flagged as Transferred — still shown on the roster with an orange badge until the position is vacated."
+                        elif choice.startswith("Mark position VACANT"):
                             working_df.at[sel_idx, 'Staff_Name'] = "VACANT"
                             working_df.at[sel_idx, 'Status'] = "VACANCY"
                             msg = "Marked vacant."
@@ -745,6 +758,17 @@ with tab3:
                         update_github(working_df, target_file)
                         st.success(msg)
                         st.rerun()
+
+                st.divider()
+                st.markdown("##### Positions currently flagged as Transferred (pending exit)")
+                transferred_now = working_df[working_df['Status'] == 'Transferred'].copy()
+                if transferred_now.empty:
+                    st.caption("None right now.")
+                else:
+                    transferred_now['Location'] = transferred_now.apply(location_of, axis=1)
+                    cols_to_show = ['Location', 'Staff_Name'] + (['Designation'] if 'Designation' in transferred_now.columns else [])
+                    st.dataframe(transferred_now[cols_to_show], use_container_width=True, hide_index=True)
+                    st.caption("Once someone actually exits, come back here and use 'Mark position VACANT now' to open the slot.")
 
             # =========================================================
             # 4. ADD NEW EMPLOYEE — brand-new joiner, not a transfer
