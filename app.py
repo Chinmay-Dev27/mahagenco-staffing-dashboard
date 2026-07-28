@@ -34,7 +34,7 @@ st.markdown("""
     .badge-active { background-color: #e6fffa; color: #047857; border: 1px solid #047857; padding: 4px 8px; border-radius: 4px; font-weight: 500; font-size: 0.85em; display: inline-block; margin-bottom: 2px;}
     .stButton>button { width: 100%; }
     div[data-testid="stRadio"] > label { font-size: 1.1rem; font-weight: bold; color: #4facfe; }
-    
+
     /* Hierarchy Tree Styles */
     .rank-box { 
         padding: 5px 10px; margin: 2px 0; border-radius: 6px; text-align: left; color: white; font-weight: bold; font-size: 0.9em; display: flex; align-items: center;
@@ -50,6 +50,8 @@ st.markdown("""
 
 # --- SESSION STATE ---
 if 'admin_logged_in' not in st.session_state: st.session_state.admin_logged_in = False
+if 'transfer_step' not in st.session_state: st.session_state.transfer_step = 1
+if 'transfer_data' not in st.session_state: st.session_state.transfer_data = {}
 
 # --- DATA FUNCTIONS ---
 def update_github(df, filename):
@@ -156,7 +158,7 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
     title_style = styles['Title']
     heading_style = styles['Heading3']
     normal_style = styles['Normal']
-    
+
     # --- Single Page Op Vacancy Report ---
     if report_type == "Single Page Op Vacancy":
         story.append(Paragraph(f"MAHAGENCO Parli TPS - Operation Vacancy Overview", title_style))
@@ -166,7 +168,7 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
         # 1. Top Section: Shift In-Charge Anomalies
         sic_df = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)]
         sic_anomalies = sic_df[sic_df['Status'].isin(['VACANCY', 'Transferred'])] if not sic_df.empty else pd.DataFrame()
-        
+
         if not sic_anomalies.empty:
             story.append(Paragraph("⚠️ Shift In-Charge (Attention Required)", heading_style))
             sic_data = [['Unit', 'Name', 'Status']]
@@ -175,7 +177,7 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
                 nm = format_staff_name(r['Staff_Name'])
                 st_txt = "TRANSFERRED" if r['Status'] == 'Transferred' else "VACANT"
                 sic_data.append([unit, nm, st_txt])
-            
+
             t_sic = Table(sic_data, colWidths=[150, 300, 150])
             t_sic.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.red),
@@ -194,7 +196,7 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
             units = sorted(ops_df['Unit'].unique())
             desks = ['PCR In-Charge', 'Turbine Control Desk', 'Boiler Control Desk', 'Drum Level Desk', 'Boiler API (BAPI)', 'Turbine API (TAPI)']
             main_data = [['Position'] + units]
-            
+
             for desk in desks:
                 row = [desk]
                 for u in units:
@@ -212,7 +214,7 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
                                 cell_content.append(Paragraph(nm, normal_style))
                         row.append(cell_content)
                 main_data.append(row)
-            
+
             t_main = Table(main_data, colWidths=[120, 180, 180, 180])
             t_main.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')),
@@ -228,12 +230,12 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
         story.append(Paragraph("Detailed Vacancy & Transfer List", heading_style))
         # Filter for relevant rows
         op_issues = ops_df[ops_df['Status'].isin(['VACANCY', 'Transferred'])].sort_values(['Unit', 'Desk'])
-        
+
         list_data = [['Unit', 'Desk', 'Name', 'Status']]
         for _, r in op_issues.iterrows():
             nm = format_staff_name(r['Staff_Name'])
             list_data.append([r['Unit'], r['Desk'], nm, r['Status']])
-            
+
         if len(list_data) > 1:
             t_list = Table(list_data, colWidths=[80, 200, 250, 120])
             t_list.setStyle(TableStyle([
@@ -255,7 +257,7 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
         v_total, t_total, _ = get_global_metrics(ops_df, dept_df, "Global")
         v_ops, t_ops, _ = get_global_metrics(ops_df, dept_df, "Ops")
         v_dept, t_dept, _ = get_global_metrics(pd.DataFrame(), dept_df, "Dept")
-        
+
         summary_data = [
             ['Section', 'Total Vacancies', 'Total Transferred'],
             ['Shift Operations (Inc. In-Charge)', v_ops, t_ops],
@@ -269,7 +271,7 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
 
         # Content based on Type
         story.append(Paragraph("1. Shift Operations (Main Plant)", styles['Heading2']))
-        
+
         # SIC Table
         sic_df = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)] if not dept_df.empty else pd.DataFrame()
         if not sic_df.empty:
@@ -317,7 +319,7 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
 
         story.append(PageBreak())
         story.append(Paragraph("2. Departmental Staff", styles['Heading2']))
-        
+
         if not dept_df.empty:
             if report_type == "Summary":
                 agg_data = [['Department', 'Active Staff', 'Vacant', 'Transferred']]
@@ -385,7 +387,7 @@ with tab1:
         else:
             op_df = ops_df[ops_df['Desk'] != 'Shift In-Charge']
             vacant_count, transferred_count, status_counts = get_global_metrics(ops_df, dept_df, "Ops")
-            
+
             c1, c2, c3 = st.columns([1, 1.5, 1.2])
             with c1:
                 st.markdown("##### Staff Status")
@@ -427,7 +429,7 @@ with tab1:
                         s8_icon = "🟠" if "Transferred" in stat else "🟢"
                     sic_data.append({"Unit 6 & 7 (Common Pool)": f"{s67_icon} {n67}", "Unit 8": f"{s8_icon} {n8}"})
                 st.dataframe(pd.DataFrame(sic_data), use_container_width=True, hide_index=True)
-            
+
             st.divider()
             def agg_staff_html(x):
                 html = []
@@ -470,7 +472,7 @@ with tab1:
             ops_folders = [d for d in all_departments if 'Main Plant Ops' in d]
             sic_folders = [d for d in all_departments if 'Shift In-Charge' in d]
             standard_folders = [d for d in all_departments if 'CHP' not in d and 'Main Plant Ops' not in d and 'Shift In-Charge' not in d]
-            
+
             def render_hierarchy(group):
                 group = group.copy()
                 group['Rank'] = group['Designation'].apply(get_rank_level)
@@ -493,7 +495,7 @@ with tab1:
                     for d in sic_folders:
                         st.markdown(f"**{d}**")
                         render_hierarchy(active_df[active_df['Department'] == d])
-            
+
             if ops_folders:
                 ops_total = sum([len(active_df[active_df['Department'] == d]) for d in ops_folders])
                 with st.expander(f"🏭 Main Plant PCR Staff (Total: {ops_total})", expanded=False):
@@ -517,7 +519,7 @@ with tab1:
 with tab2:
     st.header("Search & Reports")
     search_tabs = st.tabs(["⚡ Shift Operations Search", "🏢 Departmental Staff Search"])
-    
+
     with search_tabs[0]:
         st.subheader("Search in Shift Operations")
         c_op1, c_op2 = st.columns(2)
@@ -552,7 +554,7 @@ with tab2:
         else: st.info("No records found.")
 
 with tab3:
-    st.header("Admin")
+    st.header("🛠️ Admin")
     if not st.session_state.admin_logged_in:
         if st.text_input("Password", type="password")=="admin123" and st.button("Login"):
             st.session_state.admin_logged_in=True
@@ -564,30 +566,191 @@ with tab3:
         st.write(f"Editing: **{view_mode}**")
         working_df = ops_df if view_mode == VIEW_OPS else dept_df
         target_file = OPS_FILE if view_mode == VIEW_OPS else DEPT_FILE
-        if working_df.empty: st.error("Cannot edit empty dataset.")
+
+        # ---------- LOCATION HELPERS (unify Dept vs Ops so the same UI works for both) ----------
+        def location_of(row):
+            if view_mode == VIEW_OPS:
+                return f"{row['Unit']} | {row['Desk']}"
+            return str(row['Department'])
+
+        def person_label(row):
+            nm = "VACANT" if row['Status'] == 'VACANCY' or 'VACANT' in str(row['Staff_Name']).upper() else format_staff_name(row['Staff_Name'], row.get('Designation', ''))
+            tag = f" [{row['Status']}]" if row['Status'] != 'Active' else ""
+            return f"{nm} — {location_of(row)}{tag}"
+
+        def new_vacant_row(location, extra=None):
+            """Build a blank VACANCY row for the given location."""
+            if view_mode == VIEW_OPS:
+                unit, desk = location.split(" | ", 1)
+                row = {"Unit": unit, "Desk": desk, "Staff_Name": "VACANT", "Status": "VACANCY", "Action_Required": ""}
+            else:
+                row = {"Department": location, "Staff_Name": "VACANT",
+                       "Designation": extra.get("Designation", "") if extra else "",
+                       "SAP_ID": "", "Status": "VACANCY", "Action_Required": ""}
+            return row
+
+        if working_df.empty:
+            st.error("Cannot edit empty dataset.")
         else:
-            act = st.selectbox("Action", ["Change Status", "Add Person"])
-            if act == "Change Status":
-                if view_mode == VIEW_OPS:
-                    u = st.selectbox("Unit", working_df['Unit'].unique())
-                    d = st.selectbox("Desk", working_df[working_df['Unit']==u]['Desk'].unique())
-                    p_list = working_df[(working_df['Unit']==u)&(working_df['Desk']==d)]
+            location_options = sorted(working_df.apply(location_of, axis=1).unique().tolist())
+            action = st.radio(
+                "Choose an action",
+                ["🔄 Transfer Employee", "✅ Fill a Vacancy", "🕳️ Mark Vacant / Remove", "➕ Add New Employee"],
+                horizontal=False
+            )
+            st.divider()
+
+            # =========================================================
+            # 1. TRANSFER — move a person to another location in one go,
+            #    optionally swapping with / being replaced by someone else.
+            # =========================================================
+            if action == "🔄 Transfer Employee":
+                st.subheader("Transfer an employee to a new location")
+                movable = working_df[(working_df['Status'] != 'VACANCY') & (~working_df['Staff_Name'].str.upper().str.contains("VACANT"))].copy()
+                if movable.empty:
+                    st.info("No active employees to transfer.")
                 else:
-                    dept = st.selectbox("Department", working_df['Department'].unique())
-                    p_list = working_df[working_df['Department']==dept]
-                if not p_list.empty:
-                    p = st.selectbox("Person", p_list['Staff_Name'].unique())
-                    s = st.selectbox("New Status", ["Active", "Transferred", "VACANCY"])
-                    if st.button("Update Status"):
-                        idx = p_list[p_list['Staff_Name']==p].index[0]
-                        working_df.at[idx,'Status'] = s
-                        if s=='VACANCY': working_df.at[idx,'Staff_Name']="VACANT"
+                    movable['__label'] = movable.apply(person_label, axis=1)
+                    src_label = st.selectbox("1️⃣ Employee to transfer", movable['__label'])
+                    src_idx = movable[movable['__label'] == src_label].index[0]
+                    src_row = working_df.loc[src_idx]
+                    src_location = location_of(src_row)
+
+                    dest_location = st.selectbox("2️⃣ Transfer to which location?",
+                                                  [l for l in location_options if l != src_location])
+
+                    dest_rows = working_df[working_df.apply(location_of, axis=1) == dest_location]
+                    dest_vacancy = dest_rows[dest_rows['Status'] == 'VACANCY']
+                    dest_occupied = dest_rows[(dest_rows['Status'] != 'VACANCY') & (~dest_rows['Staff_Name'].str.upper().str.contains("VACANT"))]
+
+                    st.caption(f"📍 **{dest_location}** currently has {len(dest_occupied)} active staff and {len(dest_vacancy)} vacancy(ies).")
+
+                    mode_options = ["Move into an existing vacancy there"]
+                    if not dest_occupied.empty:
+                        mode_options.append("Swap places with someone there")
+                    mode_options.append("Create a new position there (leaves old spot vacant)")
+                    if dest_vacancy.empty and "Move into an existing vacancy there" in mode_options:
+                        mode_options.remove("Move into an existing vacancy there")
+
+                    mode = st.radio("3️⃣ How should this transfer happen?", mode_options)
+
+                    replacement_name = None
+                    swap_idx = None
+                    if mode == "Swap places with someone there":
+                        dest_occupied2 = dest_occupied.copy()
+                        dest_occupied2['__label'] = dest_occupied2.apply(person_label, axis=1)
+                        swap_label = st.selectbox("Who should move into the vacated spot instead?", dest_occupied2['__label'])
+                        swap_idx = dest_occupied2[dest_occupied2['__label'] == swap_label].index[0]
+                    else:
+                        fill_choice = st.radio("What happens to the spot being vacated?",
+                                                ["Leave it VACANT", "Someone else fills it right away"], horizontal=True)
+                        if fill_choice == "Someone else fills it right away":
+                            replacement_name = st.text_input("Name of the replacement joining at the old spot")
+
+                    if st.button("✅ Execute Transfer", type="primary"):
+                        # Move source employee's identity into destination slot
+                        moved_fields = {"Staff_Name": src_row['Staff_Name'], "Status": "Active"}
+                        if view_mode == VIEW_DEPT:
+                            moved_fields["Designation"] = src_row.get('Designation', '')
+                            moved_fields["SAP_ID"] = src_row.get('SAP_ID', '')
+
+                        if mode == "Move into an existing vacancy there":
+                            target_idx = dest_vacancy.index[0]
+                            for k, v in moved_fields.items():
+                                working_df.at[target_idx, k] = v
+                            working_df.at[src_idx, 'Staff_Name'] = "VACANT"
+                            working_df.at[src_idx, 'Status'] = "VACANCY"
+
+                        elif mode == "Swap places with someone there":
+                            other = working_df.loc[swap_idx].copy()
+                            other_fields = {"Staff_Name": other['Staff_Name'], "Status": "Active"}
+                            if view_mode == VIEW_DEPT:
+                                other_fields["Designation"] = other.get('Designation', '')
+                                other_fields["SAP_ID"] = other.get('SAP_ID', '')
+                            for k, v in moved_fields.items():
+                                working_df.at[swap_idx, k] = v
+                            for k, v in other_fields.items():
+                                working_df.at[src_idx, k] = v
+
+                        else:  # Create a new position there
+                            extra = {"Designation": src_row.get('Designation', '')} if view_mode == VIEW_DEPT else None
+                            new_row = new_vacant_row(dest_location, extra)
+                            new_row.update(moved_fields)
+                            working_df = pd.concat([working_df, pd.DataFrame([new_row])], ignore_index=True)
+                            if replacement_name:
+                                working_df.at[src_idx, 'Staff_Name'] = replacement_name
+                                working_df.at[src_idx, 'Status'] = "Active"
+                            else:
+                                working_df.at[src_idx, 'Staff_Name'] = "VACANT"
+                                working_df.at[src_idx, 'Status'] = "VACANCY"
+
                         save_local(working_df, target_file)
                         update_github(working_df, target_file)
-                        st.success("Updated!")
+                        st.success(f"Transferred {format_staff_name(src_row['Staff_Name'])} from {src_location} to {dest_location}.")
                         st.rerun()
-            elif act == "Add Person":
-                st.subheader("Add New Staff Member")
+
+            # =========================================================
+            # 2. FILL A VACANCY — quickest path to plug a gap
+            # =========================================================
+            elif action == "✅ Fill a Vacancy":
+                st.subheader("Fill an existing vacancy")
+                vacancies = working_df[working_df['Status'] == 'VACANCY'].copy()
+                if vacancies.empty:
+                    st.success("No open vacancies 🎉")
+                else:
+                    vacancies['__label'] = vacancies.apply(location_of, axis=1)
+                    vac_label = st.selectbox("Vacant position", vacancies['__label'])
+                    vac_idx = vacancies[vacancies['__label'] == vac_label].index[0]
+                    new_name = st.text_input("Name of the person filling this position")
+                    extra_cols = {}
+                    if view_mode == VIEW_DEPT:
+                        c1, c2 = st.columns(2)
+                        extra_cols['Designation'] = c1.text_input("Designation", value=str(working_df.at[vac_idx, 'Designation']) if 'Designation' in working_df.columns else "")
+                        extra_cols['SAP_ID'] = c2.text_input("SAP ID (optional)")
+                    if st.button("✅ Fill Position", type="primary"):
+                        if new_name:
+                            working_df.at[vac_idx, 'Staff_Name'] = new_name
+                            working_df.at[vac_idx, 'Status'] = "Active"
+                            for k, v in extra_cols.items():
+                                working_df.at[vac_idx, k] = v
+                            save_local(working_df, target_file)
+                            update_github(working_df, target_file)
+                            st.success(f"{new_name} now fills {vac_label}")
+                            st.rerun()
+                        else:
+                            st.error("Name is required.")
+
+            # =========================================================
+            # 3. MARK VACANT / REMOVE — take someone out of a position
+            # =========================================================
+            elif action == "🕳️ Mark Vacant / Remove":
+                st.subheader("Vacate or remove a position")
+                occupied = working_df[(working_df['Status'] != 'VACANCY') & (~working_df['Staff_Name'].str.upper().str.contains("VACANT"))].copy()
+                if occupied.empty:
+                    st.info("No active employees found.")
+                else:
+                    occupied['__label'] = occupied.apply(person_label, axis=1)
+                    sel_label = st.selectbox("Employee", occupied['__label'])
+                    sel_idx = occupied[occupied['__label'] == sel_label].index[0]
+                    choice = st.radio("Action", ["Mark position VACANT (they left / on transfer out)", "Remove this row entirely (position no longer exists)"])
+                    if st.button("Confirm", type="primary"):
+                        if choice.startswith("Mark"):
+                            working_df.at[sel_idx, 'Staff_Name'] = "VACANT"
+                            working_df.at[sel_idx, 'Status'] = "VACANCY"
+                            msg = "Marked vacant."
+                        else:
+                            working_df = working_df.drop(index=sel_idx).reset_index(drop=True)
+                            msg = "Row removed."
+                        save_local(working_df, target_file)
+                        update_github(working_df, target_file)
+                        st.success(msg)
+                        st.rerun()
+
+            # =========================================================
+            # 4. ADD NEW EMPLOYEE — brand-new joiner, not a transfer
+            # =========================================================
+            elif action == "➕ Add New Employee":
+                st.subheader("Add a brand-new staff member")
                 if view_mode == VIEW_DEPT:
                     c1, c2 = st.columns(2)
                     new_dept = c1.selectbox("Select Department", sorted(working_df['Department'].unique()))
@@ -595,7 +758,7 @@ with tab3:
                     c3, c4 = st.columns(2)
                     new_desg = c3.selectbox("Designation", ["EE", "AD.EE", "DY.EE", "AE", "JE", "Other"])
                     new_sap = c4.text_input("SAP ID (Optional)")
-                    if st.button("Add to Department"):
+                    if st.button("Add to Department", type="primary"):
                         if new_name:
                             new_row = {"Department": new_dept, "Staff_Name": new_name, "Designation": new_desg, "SAP_ID": new_sap, "Status": "Active", "Action_Required": ""}
                             working_df = pd.concat([working_df, pd.DataFrame([new_row])], ignore_index=True)
@@ -609,7 +772,7 @@ with tab3:
                     new_unit = c1.selectbox("Unit", ["Unit 6", "Unit 7", "Unit 8"])
                     new_desk = c2.selectbox("Desk", working_df['Desk'].unique())
                     new_name = st.text_input("Staff Name")
-                    if st.button("Add to Roster"):
+                    if st.button("Add to Roster", type="primary"):
                         if new_name:
                             vac_check = working_df[(working_df['Unit']==new_unit) & (working_df['Desk']==new_desk) & (working_df['Status']=='VACANCY')]
                             if not vac_check.empty:
