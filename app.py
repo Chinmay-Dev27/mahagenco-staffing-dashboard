@@ -10,10 +10,11 @@ import tempfile
 # --- REPORTLAB IMPORTS ---
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak, KeepInFrame
+)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.graphics.shapes import Drawing, Line, Polygon
 
 # --- CONFIGURATION & CONSTANTS ---
 st.set_page_config(page_title="Mahagenco Parli Ops", page_icon="⚡", layout="wide")
@@ -34,13 +35,27 @@ DESK_ORDER = [
     'Turbine API (TAPI)'
 ]
 
+# Full name auto-mapper if CSV still has old initials for Shift In-Charge
+SIC_NAME_MAP = {
+    "R. V. Bhale": "Renukadas Bhale",
+    "J. S. Dumne": "Jayant Dumne",
+    "S. B. Pawar": "Sunil Pawar",
+    "S. P. Kale": "Sunil Kale",
+    "K. G. Rathod": "Kundan Rathod",
+    "S. B. Gaikwad": "Sumeet Gaikwad",
+    "P. S. Yallawar": "Prashant Yallawar",
+    "J. N. Deshmane": "Jagannath Deshmane",
+    "M. N. Munde": "Mahadev Munde",
+    "S. N. Oholkar": "Sunit Oholkar"
+}
+
 # --- CUSTOM CSS ---
 st.markdown("""
 <style>
     .metric-card { background-color: #0E1117; border: 1px solid #30333F; border-radius: 10px; padding: 15px; text-align: center; }
-    .badge-vacant { background-color: #ff4b4b; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; display: inline-block; margin-bottom: 2px;}
-    .badge-transfer { background-color: #ffa421; color: black; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; display: inline-block; margin-bottom: 2px;}
-    .badge-active { background-color: #e6fffa; color: #047857; border: 1px solid #047857; padding: 4px 8px; border-radius: 4px; font-weight: 500; font-size: 0.85em; display: inline-block; margin-bottom: 2px;}
+    .badge-vacant { background-color: #ff4b4b; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; display: inline-block; margin-bottom: 3px;}
+    .badge-transfer { background-color: #ffa421; color: black; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; display: inline-block; margin-bottom: 3px;}
+    .badge-active { background-color: #e6fffa; color: #047857; border: 1px solid #047857; padding: 4px 8px; border-radius: 4px; font-weight: 500; font-size: 0.85em; display: inline-block; margin-bottom: 3px;}
     .stButton>button { width: 100%; }
     div[data-testid="stRadio"] > label { font-size: 1.1rem; font-weight: bold; color: #4facfe; }
 
@@ -139,11 +154,23 @@ def load_data(filename):
             df['Status'] = 'Active'
         if 'Action_Required' not in df.columns:
             df['Action_Required'] = ''
-        return df.fillna("")
+        df = df.fillna("")
+        # Normalize any row where Staff_Name is VACANT so Status is always VACANCY
+        vac_mask = df['Staff_Name'].astype(str).str.strip().str.upper() == 'VACANT'
+        df.loc[vac_mask, 'Status'] = 'VACANCY'
+        # Auto-expand Shift In-Charge initials if present
+        if filename == DEPT_FILE and 'Department' in df.columns:
+            sic_mask = df['Department'].astype(str).str.contains('Shift In-Charge', na=False)
+            df.loc[sic_mask, 'Staff_Name'] = df.loc[sic_mask, 'Staff_Name'].apply(
+                lambda x: SIC_NAME_MAP.get(str(x).strip(), str(x).strip())
+            )
+        return df
     except Exception:
         return pd.DataFrame()
 
 def save_and_sync(df, filename):
+    vac_mask = df['Staff_Name'].astype(str).str.strip().str.upper() == 'VACANT'
+    df.loc[vac_mask, 'Status'] = 'VACANCY'
     df.to_csv(filename, index=False)
     st.cache_data.clear()
     update_github(df, filename)
@@ -152,6 +179,7 @@ def format_staff_name(raw_name, desg=""):
     if "VACANT" in str(raw_name).upper():
         return "VACANT"
     clean = re.sub(r'\s*\((Transferred|Trf|transferred)\)', '', str(raw_name), flags=re.IGNORECASE).strip()
+    clean = SIC_NAME_MAP.get(clean, clean)
     if desg and str(desg).strip() and str(desg).lower() not in clean.lower():
         clean = f"{clean} ({desg})"
     elif not desg:
@@ -176,30 +204,18 @@ def get_rank_level(desg):
         return 5
     return 6
 
-# --- GRAPHIC HELPERS ---
-def draw_red_cross():
-    d = Drawing(10, 10)
-    d.add(Line(1, 1, 9, 9, strokeColor=colors.red, strokeWidth=2))
-    d.add(Line(1, 9, 9, 1, strokeColor=colors.red, strokeWidth=2))
-    return d
-
-def draw_orange_flag():
-    d = Drawing(10, 10)
-    d.add(Line(2, 0, 2, 10, strokeColor=colors.black, strokeWidth=1))
-    d.add(Polygon([2, 10, 9, 7, 2, 4], fillColor=colors.orange, strokeWidth=0))
-    return d
-
 # --- UNIVERSAL METRICS HELPER ---
 def calculate_metrics(df):
     if df.empty:
         return 0, 0, pd.Series()
-    staff_only = df[df['Staff_Name'].str.contains("VACANT", case=False) == False].copy()
+    is_vac = (df['Status'] == 'VACANCY') | (df['Staff_Name'].astype(str).str.contains("VACANT", case=False, na=False))
+    staff_only = df[~is_vac].copy()
     staff_only['Staff_Name'] = staff_only['Staff_Name'].astype(str).str.strip()
     staff_only['Status_Rank'] = staff_only['Status'].apply(lambda x: 2 if 'Transferred' in str(x) else 1)
     staff_only = staff_only.sort_values(by=['Staff_Name', 'Status_Rank'], ascending=[True, False])
     unique_staff = staff_only.drop_duplicates(subset=['Staff_Name'], keep='first')
     transferred = len(unique_staff[unique_staff['Status'] == 'Transferred'])
-    vacant = len(df[df['Status'] == 'VACANCY'])
+    vacant = int(is_vac.sum())
     status_counts = unique_staff['Status'].value_counts()
     if vacant > 0:
         status_counts['VACANCY'] = vacant
@@ -223,104 +239,210 @@ def get_global_metrics(ops_df, dept_df, scope="Global"):
     combined = pd.concat(dfs)
     return calculate_metrics(combined)
 
-# --- PDF ENGINE ---
+
+# ==============================================================================
+# ALIGNED, SINGLE-PAGE PDF ENGINE
+# ==============================================================================
+def format_pdf_staff_line(r):
+    """Formats a single staff row cleanly for PDF Paragraph without nested sub-tables."""
+    status = str(r.get('Status', 'Active'))
+    raw_name = str(r.get('Staff_Name', '')).strip()
+    desg = str(r.get('Designation', '')).strip()
+    is_vac = (status == 'VACANCY') or ('VACANT' in raw_name.upper())
+
+    if is_vac:
+        return '<font color="#dc2626"><b>[X] VACANT</b></font>'
+    nm = format_staff_name(raw_name, desg)
+    if status == 'Transferred':
+        return f'<font color="#d97706"><b>[Trf]</b> <i>{nm}</i></font>'
+    return f'<font color="#0f172a">{nm}</font>'
+
+
 def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=20, bottomMargin=20)
-    story = []
+    # Landscape A4 = 841.89 x 595.27 pt. With 25pt margins, usable width = 791pt, height = 545pt
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=25, leftMargin=25, topMargin=18, bottomMargin=18
+    )
     styles = getSampleStyleSheet()
-    title_style = styles['Title']
-    heading_style = styles['Heading3']
-    normal_style = styles['Normal']
 
+    title_style = ParagraphStyle(
+        'PDFTitle', parent=styles['Title'],
+        fontName='Helvetica-Bold', fontSize=14, leading=16, alignment=TA_CENTER, spaceAfter=2
+    )
+    sub_style = ParagraphStyle(
+        'PDFSub', parent=styles['Normal'],
+        fontName='Helvetica', fontSize=8, leading=10, alignment=TA_CENTER, textColor=colors.HexColor('#475569'), spaceAfter=8
+    )
+    sec_heading = ParagraphStyle(
+        'PDFSec', parent=styles['Heading3'],
+        fontName='Helvetica-Bold', fontSize=10, leading=12, textColor=colors.HexColor('#1e293b'), spaceBefore=4, spaceAfter=4
+    )
+    cell_style = ParagraphStyle(
+        'PDFCell', parent=styles['Normal'],
+        fontName='Helvetica', fontSize=8, leading=10.5, alignment=TA_LEFT
+    )
+    desk_col_style = ParagraphStyle(
+        'PDFDeskCol', parent=styles['Normal'],
+        fontName='Helvetica-Bold', fontSize=8.5, leading=11, textColor=colors.HexColor('#1e293b')
+    )
+    hdr_style = ParagraphStyle(
+        'PDFHdr', parent=styles['Normal'],
+        fontName='Helvetica-Bold', fontSize=9, leading=11, textColor=colors.white
+    )
+
+    story = []
+
+    # ------------------------------------------------------------------
+    # 1. SINGLE PAGE OP VACANCY OVERVIEW (STRICTLY FITS ON 1 PAGE)
+    # ------------------------------------------------------------------
     if report_type == "Single Page Op Vacancy":
-        story.append(Paragraph("MAHAGENCO Parli TPS - Operation Vacancy Overview", title_style))
-        story.append(Paragraph(f"Generated: {pd.Timestamp.now().strftime('%d-%b-%Y %H:%M')}", normal_style))
-        story.append(Spacer(1, 15))
+        page_flowables = []
+        page_flowables.append(Paragraph("MAHAGENCO Parli TPS — Operation Staffing & Vacancy Overview", title_style))
+        page_flowables.append(Paragraph(f"Generated: {pd.Timestamp.now().strftime('%d-%b-%Y %H:%M')}", sub_style))
 
-        sic_df = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)]
-        sic_anomalies = sic_df[sic_df['Status'].isin(['VACANCY', 'Transferred'])] if not sic_df.empty else pd.DataFrame()
+        # --- Section A: Complete Shift In-Charge (EE) Roster (Unit 6&7 and Unit 8) ---
+        sic_df = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)] if not dept_df.empty else pd.DataFrame()
+        if not sic_df.empty:
+            page_flowables.append(Paragraph("1. Shift In-Charge (EE) Roster", sec_heading))
+            u67_rows = sic_df[sic_df['Department'] == 'Shift In-Charge (U6&7)']
+            u8_rows = sic_df[sic_df['Department'] == 'Shift In-Charge (U8)']
 
-        if not sic_anomalies.empty:
-            story.append(Paragraph("⚠️ Shift In-Charge (Attention Required)", heading_style))
-            sic_data = [['Unit', 'Name', 'Status']]
-            for _, r in sic_anomalies.iterrows():
-                unit = "Unit 6 & 7" if "U6&7" in r['Department'] else "Unit 8"
-                nm = format_staff_name(r['Staff_Name'], r.get('Designation', ''))
-                st_txt = "TRANSFERRED" if r['Status'] == 'Transferred' else "VACANT"
-                sic_data.append([unit, nm, st_txt])
+            u67_lines = "<br/>".join([format_pdf_staff_line(r) for _, r in u67_rows.iterrows()]) or "-"
+            u8_lines = "<br/>".join([format_pdf_staff_line(r) for _, r in u8_rows.iterrows()]) or "-"
 
-            t_sic = Table(sic_data, colWidths=[150, 300, 150])
+            sic_table_data = [
+                [
+                    Paragraph("<b>Position</b>", hdr_style),
+                    Paragraph("<b>Unit 6 & 7 (Common Pool)</b>", hdr_style),
+                    Paragraph("<b>Unit 8</b>", hdr_style)
+                ],
+                [
+                    Paragraph("Shift In-Charge (EE)", desk_col_style),
+                    Paragraph(u67_lines, cell_style),
+                    Paragraph(u8_lines, cell_style)
+                ]
+            ]
+            t_sic = Table(sic_table_data, colWidths=[125, 333, 333])
             t_sic.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.red),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                ('GRID', (0,0), (-1,-1), 1, colors.black),
-                ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
-                ('BACKGROUND', (0,1), (-1,-1), colors.white),
-                ('TEXTCOLOR', (0,1), (-1,-1), colors.black),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a8a')),
+                ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#f1f5f9')),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#94a3b8')),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 6),
             ]))
-            story.append(t_sic)
-            story.append(Spacer(1, 15))
+            page_flowables.append(t_sic)
+            page_flowables.append(Spacer(1, 6))
 
+        # --- Section B: Main Plant PCR Shift Operations Roster (Full Width 791pt) ---
         if not ops_df.empty:
-            story.append(Paragraph("Shift Operations Roster", heading_style))
+            page_flowables.append(Paragraph("2. Main Plant Shift Operations Roster", sec_heading))
             units = sorted(ops_df['Unit'].unique())
-            main_data = [['Position'] + units]
+            header_row = [Paragraph("<b>Position / Desk</b>", hdr_style)] + [Paragraph(f"<b>{u}</b>", hdr_style) for u in units]
+            main_data = [header_row]
 
             for desk in DESK_ORDER:
-                row = [desk]
+                row = [Paragraph(desk, desk_col_style)]
                 for u in units:
                     matches = ops_df[(ops_df['Unit'] == u) & (ops_df['Desk'] == desk)]
                     if matches.empty:
-                        row.append("-")
+                        row.append(Paragraph("-", cell_style))
                     else:
-                        cell_content = []
-                        for _, r in matches.iterrows():
-                            nm = format_staff_name(r['Staff_Name'], r.get('Designation', ''))
-                            if r['Status'] == 'VACANCY':
-                                cell_content.append(Table([[draw_red_cross(), Paragraph("<b>VACANT</b>", normal_style)]], colWidths=[15, 80]))
-                            elif r['Status'] == 'Transferred':
-                                cell_content.append(Table([[draw_orange_flag(), Paragraph(f"<i>{nm}</i>", normal_style)]], colWidths=[15, 80]))
-                            else:
-                                cell_content.append(Paragraph(nm, normal_style))
-                        row.append(cell_content)
+                        lines_html = "<br/>".join([format_pdf_staff_line(r) for _, r in matches.iterrows()])
+                        row.append(Paragraph(lines_html, cell_style))
                 main_data.append(row)
 
-            t_main = Table(main_data, colWidths=[120, 180, 180, 180])
+            # Total width = 125 + 222 + 222 + 222 = 791pt
+            t_main = Table(main_data, colWidths=[125, 222, 222, 222])
             t_main.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-                ('VALIGN', (0,0), (-1,-1), 'TOP'),
-                ('FONTSIZE', (0,0), (-1,-1), 8)
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e293b')),
+                ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#f8fafc')),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#94a3b8')),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('TOPPADDING', (0, 0), (-1, -1), 3.5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 6),
             ]))
-            story.append(t_main)
-            story.append(Spacer(1, 15))
+            page_flowables.append(t_main)
+            page_flowables.append(Spacer(1, 6))
 
-        story.append(Paragraph("Detailed Vacancy & Transfer List", heading_style))
-        op_issues = ops_df[ops_df['Status'].isin(['VACANCY', 'Transferred'])].sort_values(['Unit', 'Desk'])
+        # --- Section C: Summary of Vacancies & Pending Transfers ---
+        page_flowables.append(Paragraph("3. Action Required — Open Vacancies & Pending Transfers", sec_heading))
+        issue_rows = [
+            [
+                Paragraph("<b>Unit / Pool</b>", hdr_style),
+                Paragraph("<b>Desk / Position</b>", hdr_style),
+                Paragraph("<b>Staff / Slot</b>", hdr_style),
+                Paragraph("<b>Status</b>", hdr_style)
+            ]
+        ]
 
-        list_data = [['Unit', 'Desk', 'Name', 'Status']]
-        for _, r in op_issues.iterrows():
-            nm = format_staff_name(r['Staff_Name'], r.get('Designation', ''))
-            list_data.append([r['Unit'], r['Desk'], nm, r['Status']])
+        # Include Shift In-Charge anomalies
+        if not sic_df.empty:
+            sic_issues = sic_df[
+                (sic_df['Status'].isin(['VACANCY', 'Transferred'])) |
+                (sic_df['Staff_Name'].astype(str).str.upper().str.contains('VACANT'))
+            ]
+            for _, r in sic_issues.iterrows():
+                u_lbl = "Unit 6 & 7" if "U6&7" in str(r['Department']) else "Unit 8"
+                is_v = (r['Status'] == 'VACANCY') or ('VACANT' in str(r['Staff_Name']).upper())
+                nm_str = "VACANT" if is_v else format_staff_name(r['Staff_Name'], r.get('Designation', ''))
+                st_html = '<font color="#dc2626"><b>VACANCY</b></font>' if is_v else '<font color="#d97706"><b>Transferred</b></font>'
+                issue_rows.append([
+                    Paragraph(u_lbl, cell_style),
+                    Paragraph("Shift In-Charge (EE)", cell_style),
+                    Paragraph(nm_str, cell_style),
+                    Paragraph(st_html, cell_style)
+                ])
 
-        if len(list_data) > 1:
-            t_list = Table(list_data, colWidths=[80, 200, 250, 120])
+        # Include Main Plant Ops anomalies
+        if not ops_df.empty:
+            op_issues = ops_df[
+                (ops_df['Status'].isin(['VACANCY', 'Transferred'])) |
+                (ops_df['Staff_Name'].astype(str).str.upper().str.contains('VACANT'))
+            ].sort_values(['Unit', 'Desk'])
+            for _, r in op_issues.iterrows():
+                is_v = (r['Status'] == 'VACANCY') or ('VACANT' in str(r['Staff_Name']).upper())
+                nm_str = "VACANT" if is_v else format_staff_name(r['Staff_Name'], r.get('Designation', ''))
+                st_html = '<font color="#dc2626"><b>VACANCY</b></font>' if is_v else '<font color="#d97706"><b>Transferred</b></font>'
+                issue_rows.append([
+                    Paragraph(str(r['Unit']), cell_style),
+                    Paragraph(str(r['Desk']), cell_style),
+                    Paragraph(nm_str, cell_style),
+                    Paragraph(st_html, cell_style)
+                ])
+
+        if len(issue_rows) > 1:
+            t_list = Table(issue_rows, colWidths=[125, 222, 294, 150])
             t_list.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#4b5563')),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-                ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.whitesmoke, colors.white])
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#334155')),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 2.5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),
             ]))
-            story.append(t_list)
+            page_flowables.append(t_list)
         else:
-            story.append(Paragraph("No other vacancies or transfers found in Shift Operations.", normal_style))
+            page_flowables.append(Paragraph("No vacancies or pending transfers found in Shift Operations.", cell_style))
 
+        # KeepInFrame guarantees the entire report shrinks smoothly to fit on 1 single Landscape A4 page
+        story.append(KeepInFrame(791, 555, page_flowables, mode='shrink'))
+
+    # ------------------------------------------------------------------
+    # 2. CONSOLIDATED SUMMARY / DETAILED REPORTS
+    # ------------------------------------------------------------------
     else:
-        story.append(Paragraph("MAHAGENCO Parli TPS - Consolidated Staffing Report", title_style))
-        story.append(Paragraph(f"Type: {report_type} | Generated: {pd.Timestamp.now().strftime('%d-%b-%Y %H:%M')}", styles['Normal']))
-        story.append(Spacer(1, 20))
+        story.append(Paragraph("MAHAGENCO Parli TPS — Consolidated Staffing Report", title_style))
+        story.append(Paragraph(f"Type: {report_type} | Generated: {pd.Timestamp.now().strftime('%d-%b-%Y %H:%M')}", sub_style))
+        story.append(Spacer(1, 10))
 
         v_total, t_total, _ = get_global_metrics(ops_df, dept_df, "Global")
         v_ops, t_ops, _ = get_global_metrics(ops_df, dept_df, "Ops")
@@ -332,101 +454,121 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
             ['Departmental Staff', v_dept, t_dept],
             ['TOTAL PLANT', v_total, t_total]
         ]
-        t_sum = Table(summary_data, colWidths=[200, 100, 100])
+        t_sum = Table(summary_data, colWidths=[350, 220, 220])
         t_sum.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1f2937')),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-            ('GRID', (0,0), (-1,-1), 1, colors.black),
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('BACKGROUND', (0,-1), (-1,-1), colors.lightgrey),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER')
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f2937')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.75, colors.HexColor('#94a3b8')),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#e2e8f0')),
+            ('ALIGN', (1, 0), (-1, -1), 'CENTER')
         ]))
         story.append(t_sum)
-        story.append(Spacer(1, 30))
+        story.append(Spacer(1, 15))
 
-        story.append(Paragraph("1. Shift Operations (Main Plant)", styles['Heading2']))
+        story.append(Paragraph("1. Shift Operations (Main Plant)", sec_heading))
 
         sic_df = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)] if not dept_df.empty else pd.DataFrame()
         if not sic_df.empty:
-            story.append(Paragraph("Shift In-Charge (EE)", heading_style))
-            u67 = ", ".join(sic_df[sic_df['Department'] == 'Shift In-Charge (U6&7)']['Staff_Name'].unique())
-            u8 = ", ".join(sic_df[sic_df['Department'] == 'Shift In-Charge (U8)']['Staff_Name'].unique())
-            sic_data = [['Unit 6 & 7 (Common)', u67], ['Unit 8', u8]]
-            t_sic = Table(sic_data, colWidths=[150, 450])
-            t_sic.setStyle(TableStyle([('GRID', (0,0), (-1,-1), 0.5, colors.grey), ('BACKGROUND', (0,0), (0,-1), colors.lightgrey)]))
+            u67_lines = ", ".join([
+                "VACANT" if (r['Status'] == 'VACANCY' or 'VACANT' in str(r['Staff_Name']).upper())
+                else format_staff_name(r['Staff_Name'], r.get('Designation', ''))
+                for _, r in sic_df[sic_df['Department'] == 'Shift In-Charge (U6&7)'].iterrows()
+            ])
+            u8_lines = ", ".join([
+                "VACANT" if (r['Status'] == 'VACANCY' or 'VACANT' in str(r['Staff_Name']).upper())
+                else format_staff_name(r['Staff_Name'], r.get('Designation', ''))
+                for _, r in sic_df[sic_df['Department'] == 'Shift In-Charge (U8)'].iterrows()
+            ])
+            sic_data = [
+                [Paragraph("<b>Shift In-Charge Pool</b>", hdr_style), Paragraph("<b>Assigned Officers (EE)</b>", hdr_style)],
+                [Paragraph("Unit 6 & 7 (Common)", desk_col_style), Paragraph(u67_lines, cell_style)],
+                [Paragraph("Unit 8", desk_col_style), Paragraph(u8_lines, cell_style)]
+            ]
+            t_sic = Table(sic_data, colWidths=[180, 611])
+            t_sic.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e3a8a')),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#f1f5f9'))
+            ]))
             story.append(t_sic)
             story.append(Spacer(1, 10))
 
         if report_type == "Summary (Numbers)":
             agg_data = [['Unit', 'Active Staff', 'Vacant', 'Transferred']]
             if not ops_df.empty:
-                groups = ops_df.groupby('Unit')
-                for name, group in groups:
+                for name, group in ops_df.groupby('Unit'):
                     v, t, s = calculate_metrics(group)
                     agg_data.append([name, s.get('Active', 0), v, t])
-            t_agg = Table(agg_data, colWidths=[150, 100, 80, 100])
-            t_agg.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+            t_agg = Table(agg_data, colWidths=[250, 180, 180, 181])
+            t_agg.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e2e8f0')),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
+            ]))
             story.append(t_agg)
         else:
             if not ops_df.empty:
                 units = sorted(ops_df['Unit'].unique())
-                main_data = [['Position'] + units]
+                header_row = [Paragraph("<b>Position / Desk</b>", hdr_style)] + [Paragraph(f"<b>{u}</b>", hdr_style) for u in units]
+                main_data = [header_row]
                 for desk in DESK_ORDER:
-                    row = [desk]
+                    row = [Paragraph(desk, desk_col_style)]
                     for u in units:
                         matches = ops_df[(ops_df['Unit'] == u) & (ops_df['Desk'] == desk)]
                         if matches.empty:
-                            row.append("-")
+                            row.append(Paragraph("-", cell_style))
                         else:
-                            names = []
-                            for _, r in matches.iterrows():
-                                nm = format_staff_name(r['Staff_Name'], r.get('Designation', ''))
-                                if r['Status'] == 'VACANCY':
-                                    nm = "VACANT"
-                                elif r['Status'] == 'Transferred':
-                                    nm = f"{nm} (Trf)"
-                                names.append(nm)
-                            row.append("\n".join(names))
+                            lines_html = "<br/>".join([format_pdf_staff_line(r) for _, r in matches.iterrows()])
+                            row.append(Paragraph(lines_html, cell_style))
                     main_data.append(row)
-                t_main = Table(main_data, colWidths=[120, 180, 180, 180])
+                t_main = Table(main_data, colWidths=[125, 222, 222, 222])
                 t_main.setStyle(TableStyle([
-                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')),
-                    ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                    ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-                    ('FONTSIZE', (0,0), (-1,-1), 8)
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2c3e50')),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#94a3b8')),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('TOPPADDING', (0, 0), (-1, -1), 4),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
                 ]))
                 story.append(t_main)
 
         story.append(PageBreak())
-        story.append(Paragraph("2. Departmental Staff", styles['Heading2']))
+        story.append(Paragraph("2. Departmental Staff", sec_heading))
 
         if not dept_df.empty:
             if report_type == "Summary (Numbers)":
                 agg_data = [['Department', 'Active Staff', 'Vacant', 'Transferred']]
-                groups = dept_df.groupby('Department')
-                for name, group in groups:
+                for name, group in dept_df.groupby('Department'):
                     v, t, s = calculate_metrics(group)
                     agg_data.append([name, s.get('Active', 0), v, t])
-                t_agg = Table(agg_data, colWidths=[250, 100, 80, 100])
-                t_agg.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+                t_agg = Table(agg_data, colWidths=[350, 147, 147, 147], repeatRows=1)
+                t_agg.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e2e8f0')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
+                ]))
                 story.append(t_agg)
             else:
-                depts = sorted(dept_df['Department'].unique())
-                for d in depts:
+                for d in sorted(dept_df['Department'].unique()):
                     group = dept_df[dept_df['Department'] == d]
                     if group.empty:
                         continue
-                    story.append(Paragraph(f"{d} ({len(group)})", heading_style))
+                    story.append(Paragraph(f"{d} ({len(group)})", sec_heading))
                     d_data = [['Name', 'Designation', 'Status']]
                     group = group.copy()
                     group['Rank'] = group['Designation'].apply(get_rank_level)
                     group = group.sort_values('Rank')
                     for _, r in group.iterrows():
                         d_data.append([format_staff_name(r['Staff_Name']), str(r['Designation']), r['Status']])
-                    t_dept = Table(d_data, colWidths=[250, 150, 100])
-                    t_dept.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,0), colors.lightgrey), ('GRID', (0,0), (-1,-1), 0.5, colors.grey)]))
+                    t_dept = Table(d_data, colWidths=[350, 241, 200], repeatRows=1)
+                    t_dept.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e2e8f0')),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
+                    ]))
                     story.append(t_dept)
-                    story.append(Spacer(1, 15))
+                    story.append(Spacer(1, 10))
 
     doc.build(story)
     buffer.seek(0)
@@ -437,14 +579,6 @@ def generate_combined_pdf(ops_df, dept_df, report_type="Summary"):
 # INTERACTIVE PLAY CARD (FLASHCARD) ENGINE
 # ==============================================================================
 def render_playcard(df, idx, is_ops, target_file, key_prefix="card"):
-    """
-    Renders a single employee / vacancy Play Card.
-    Clicking '✏️' flips/expands the card in-place with full admin actions:
-    - Edit Name, Designation, SAP ID, Status (Active / Transferred / VACANCY)
-    - Fill Vacancy directly
-    - Transfer / Swap with another Unit+Desk or Department
-    - Vacate or Delete slot
-    """
     row = df.loc[idx]
     status = str(row.get('Status', 'Active'))
     raw_name = str(row.get('Staff_Name', '')).strip()
@@ -470,7 +604,6 @@ def render_playcard(df, idx, is_ops, target_file, key_prefix="card"):
         desg_html = f'<span class="desg-pill">{desg}</span>' if desg else ""
         title_html = f"<b>{raw_name}</b>{desg_html}"
 
-    # --- FRONT OF PLAY CARD ---
     c_card, c_btn = st.columns([4.2, 1.2])
     with c_card:
         st.markdown(
@@ -483,7 +616,6 @@ def render_playcard(df, idx, is_ops, target_file, key_prefix="card"):
             st.session_state.active_edit_card = None if is_editing else card_uid
             st.rerun()
 
-    # --- BACK OF PLAY CARD (INLINE EDITOR WHEN CLICKED) ---
     if is_editing:
         with st.container(border=True):
             loc_str = f"{row['Unit']} | {row['Desk']}" if is_ops else str(row['Department'])
@@ -520,7 +652,7 @@ def render_playcard(df, idx, is_ops, target_file, key_prefix="card"):
 
                 b1, b2, b3 = st.columns(3)
                 if b1.button("💾 Save", key=f"sv_{card_uid}", type="primary"):
-                    if new_status == "VACANCY" or not new_name.strip():
+                    if new_status == "VACANCY" or not new_name.strip() or new_name.strip().upper() == "VACANT":
                         df.at[idx, 'Staff_Name'] = "VACANT"
                         df.at[idx, 'Status'] = "VACANCY"
                         df.at[idx, 'Designation'] = new_desg.strip()
@@ -694,7 +826,6 @@ def render_playcard(df, idx, is_ops, target_file, key_prefix="card"):
 
 
 def render_add_button_for_group(df, is_ops, target_file, unit_val="", desk_val="", dept_val="", key_prefix="add"):
-    """Renders an inline '➕ Add Staff / Slot' button right inside a Desk or Department card."""
     box_uid = f"{key_prefix}_{unit_val}_{desk_val}_{dept_val}"
     is_open = (st.session_state.active_add_box == box_uid)
 
@@ -716,7 +847,7 @@ def render_add_button_for_group(df, is_ops, target_file, unit_val="", desk_val="
 
             if st.button("✅ Add Now", key=f"asv_{box_uid}", type="primary"):
                 final_name = a_name.strip() if a_name.strip() else "VACANT"
-                final_status = "Active" if a_name.strip() else "VACANCY"
+                final_status = "Active" if (a_name.strip() and a_name.strip().upper() != "VACANT") else "VACANCY"
 
                 filled_existing = False
                 if a_mode == "Fill Existing Vacancy (if any)" and final_status == "Active":
@@ -761,12 +892,6 @@ def render_add_button_for_group(df, is_ops, target_file, unit_val="", desk_val="
 
 
 def render_ops_playcard_board(ops_df, dept_df, filter_mode="All", search_query="", key_prefix="board"):
-    """
-    Renders the complete Operations Flashcard / Play Card Board:
-    1. Shift In-Charge (EE) Play Cards (U6&7 and U8)
-    2. Unit 6, Unit 7, Unit 8 Desk Play Cards side-by-side
-    """
-    # --- 1. SHIFT IN-CHARGE PLAY CARDS ---
     with st.expander("👨‍✈️ Shift In-Charge (EE) Play Cards (Click ✏️ to Edit)", expanded=True):
         sic_cols = st.columns(2)
         for idx_c, sic_dept_name in enumerate(["Shift In-Charge (U6&7)", "Shift In-Charge (U8)"]):
@@ -786,7 +911,6 @@ def render_ops_playcard_board(ops_df, dept_df, filter_mode="All", search_query="
 
     st.divider()
 
-    # --- 2. MAIN PLANT PCR DESK PLAY CARDS BY UNIT ---
     units = sorted(ops_df['Unit'].unique()) if not ops_df.empty else ["Unit 6", "Unit 7", "Unit 8"]
     all_desks = [d for d in DESK_ORDER if d in ops_df['Desk'].unique()]
     for extra_d in ops_df['Desk'].unique():
@@ -828,7 +952,6 @@ def render_ops_playcard_board(ops_df, dept_df, filter_mode="All", search_query="
 
 
 def render_dept_playcard_board(dept_df, filter_mode="All", search_query="", key_prefix="deptboard"):
-    """Renders Departmental Staff as Interactive Play Cards grouped by Department & Rank."""
     all_depts = sorted(dept_df['Department'].unique().tolist())
     sel_dept = st.selectbox("Select Department (or View All)", ["All Departments"] + all_depts, key=f"{key_prefix}_sel")
 
@@ -868,7 +991,6 @@ def render_dept_playcard_board(dept_df, filter_mode="All", search_query="", key_
 # --- HEADER & NAVIGATION ---
 st.title("⚡ Mahagenco Staffing Portal")
 
-# Sidebar Controls
 if st.sidebar.button("🔄 Refresh Data"):
     st.cache_data.clear()
     st.rerun()
@@ -957,47 +1079,35 @@ with tab1:
                 m1.metric("Shortage", vacant_count)
                 m2.metric("Transferred", transferred_count)
 
-            # If Admin toggled Direct Play Card Editing on Dashboard:
             if st.session_state.admin_logged_in and st.session_state.dashboard_card_edit:
                 st.info("🃏 **Interactive Play Card Edit Mode is ON.** Click `✏️` on any card below to edit names, status, or transfer staff.")
                 render_ops_playcard_board(ops_df, dept_df, key_prefix="dash")
             else:
-                st.subheader("👨‍✈️ Shift In-Charge (EE)")
-                sic_dept = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)]
-                if not sic_dept.empty:
-                    u67_names = sic_dept[sic_dept['Department'] == 'Shift In-Charge (U6&7)']['Staff_Name'].unique()
-                    u8_names = sic_dept[sic_dept['Department'] == 'Shift In-Charge (U8)']['Staff_Name'].unique()
-                    sic_data = []
-                    max_len = max(len(u67_names), len(u8_names))
-                    for i in range(max_len):
-                        n67, s67_icon = "", ""
-                        if i < len(u67_names):
-                            nm = u67_names[i]
-                            n67 = format_staff_name(nm)
-                            stat = sic_dept[sic_dept['Staff_Name'] == nm]['Status'].values
-                            s67_icon = "🟠" if "Transferred" in stat else "🟢"
-                        n8, s8_icon = "", ""
-                        if i < len(u8_names):
-                            nm = u8_names[i]
-                            n8 = format_staff_name(nm)
-                            stat = sic_dept[sic_dept['Staff_Name'] == nm]['Status'].values
-                            s8_icon = "🟠" if "Transferred" in stat else "🟢"
-                        sic_data.append({"Unit 6 & 7 (Common Pool)": f"{s67_icon} {n67}", "Unit 8": f"{s8_icon} {n8}"})
-                    st.dataframe(pd.DataFrame(sic_data), use_container_width=True, hide_index=True)
-
-                st.divider()
-
                 def agg_staff_html(x):
                     html = []
                     for _, row in x.iterrows():
+                        is_v = (row['Status'] == 'VACANCY') or ('VACANT' in str(row['Staff_Name']).upper())
                         name = format_staff_name(row['Staff_Name'], row.get('Designation', ''))
-                        if row['Status'] == 'VACANCY':
+                        if is_v:
                             html.append('<div class="badge-vacant">🔴 VACANT</div>')
                         elif row['Status'] == 'Transferred':
                             html.append(f'<div class="badge-transfer">🟠 {name}</div>')
                         else:
                             html.append(f'<div class="badge-active">👤 {name}</div>')
-                    return "".join(html)
+                    return "<br/>".join(html)
+
+                st.subheader("👨‍✈️ Shift In-Charge (EE)")
+                sic_dept = dept_df[dept_df['Department'].str.contains('Shift In-Charge', na=False)]
+                if not sic_dept.empty:
+                    u67_df = sic_dept[sic_dept['Department'] == 'Shift In-Charge (U6&7)']
+                    u8_df = sic_dept[sic_dept['Department'] == 'Shift In-Charge (U8)']
+                    sic_html_table = [{
+                        "Unit 6 & 7 (Common Pool)": agg_staff_html(u67_df) if not u67_df.empty else "-",
+                        "Unit 8": agg_staff_html(u8_df) if not u8_df.empty else "-"
+                    }]
+                    st.write(pd.DataFrame(sic_html_table).to_html(escape=False, index=False, classes="table table-bordered"), unsafe_allow_html=True)
+
+                st.divider()
 
                 units = sorted(op_df['Unit'].unique())
                 table_data = []
@@ -1057,8 +1167,9 @@ with tab1:
                             st.markdown(f'<div class="rank-box {css_class}">{label}</div>', unsafe_allow_html=True)
                             cols = st.columns(3)
                             for i, (_, row) in enumerate(sub_group.iterrows()):
-                                name = format_staff_name(row['Staff_Name'], row.get('Designation', ''))
-                                status_icon = "🔴" if row['Status'] == 'VACANCY' else "🟠" if row['Status'] == 'Transferred' else "🟢"
+                                is_v = (row['Status'] == 'VACANCY') or ('VACANT' in str(row['Staff_Name']).upper())
+                                name = "VACANT" if is_v else format_staff_name(row['Staff_Name'], row.get('Designation', ''))
+                                status_icon = "🔴" if is_v else ("🟠" if row['Status'] == 'Transferred' else "🟢")
                                 cols[i % 3].markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;{status_icon} **{name}**")
 
                 if sic_folders:
