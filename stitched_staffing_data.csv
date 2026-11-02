@@ -47,30 +47,38 @@ Unit 7,Drum Level Desk,S.R. Ingale,Dy.EE,Active,
 Unit 7,Drum Level Desk,Manoj Bhosle,AE,Active,
 Unit 7,Drum Level Desk,Shashikant Kambale,Dy.EE,Transferred,
 Unit 7,Drum Level Desk,VACANT,,VACANCY,
-Unit 8,PCR In-Charge,Jabbar Shaikh,Ad.EE,Active,
+Unit 7,Boiler API (BAPI),S.M. Lute,AE,Active,
+Unit 7,Boiler API (BAPI),S.B. Yamgar,AE,Active,
+Unit 7,Boiler API (BAPI),N.K. Jadhav,AE,Active,
+Unit 7,Boiler API (BAPI),S.S. Rane,AE,Active,
+Unit 7,Turbine API (TAPI),S.A. Kulkarni,AE,Active,
+Unit 7,Turbine API (TAPI),S.L. Sarwade,JE,Active,
+Unit 7,Turbine API (TAPI),A.S. Khot,JE,Active,
+Unit 7,Turbine API (TAPI),P.R. Thakare,AE,Active,
+Unit 8,PCR In-Charge,Jabbar Shaikh,Ad.EE,Active,[span_0](start_span)[span_0](end_span)
 Unit 8,PCR In-Charge,Ketan Chauhan,Ad.EE,Active,
-Unit 8,PCR In-Charge,Ajit Patil,Ad.EE,Active,
-Unit 8,PCR In-Charge,Shivprasad Malphedwar,Ad.EE,Active,
-Unit 8,PCR In-Charge,Govind Gadekar,Ad.EE,Active,
-Unit 8,Turbine Control Desk,Kiran Bhagat,Dy.EE,Active,
-Unit 8,Turbine Control Desk,Ravi Bhalerao,AE,Active,
-Unit 8,Turbine Control Desk,Dnyaneshwar Balwant,Dy.EE,Active,
-Unit 8,Turbine Control Desk,Bramhadev Tarse,AE,Active,
-Unit 8,Boiler Control Desk,Nilesh Chothave,AE,Active,
-Unit 8,Boiler Control Desk,Himanshu Agrawal,Dy.EE,Active,
-Unit 8,Boiler Control Desk,Prajesh Hatote,AE,Active,
+Unit 8,PCR In-Charge,Ajit Patil,Ad.EE,Active,[span_1](start_span)[span_1](end_span)
+Unit 8,PCR In-Charge,Shivprasad Malphedwar,Ad.EE,Active,[span_2](start_span)[span_2](end_span)
+Unit 8,PCR In-Charge,Govind Gadekar,Ad.EE,Active,[span_3](start_span)[span_3](end_span)
+Unit 8,Turbine Control Desk,Kiran Bhagat,Dy.EE,Active,[span_4](start_span)[span_4](end_span)
+Unit 8,Turbine Control Desk,Ravi Bhalerao,AE,Active,[span_5](start_span)[span_5](end_span)
+Unit 8,Turbine Control Desk,Dnyaneshwar Balwant,Dy.EE,Active,[span_6](start_span)[span_6](end_span)
+Unit 8,Turbine Control Desk,Bramhadev Tarse,AE,Active,[span_7](start_span)[span_7](end_span)
+Unit 8,Boiler Control Desk,Nilesh Chothave,AE,Active,[span_8](start_span)[span_8](end_span)[span_9](start_span)[span_9](end_span)
+Unit 8,Boiler Control Desk,Himanshu Agrawal,Dy.EE,Active,[span_10](start_span)[span_10](end_span)
+Unit 8,Boiler Control Desk,Prajesh Hatote,AE,Active,[span_11](start_span)[span_11](end_span)
 Unit 8,Boiler Control Desk,Nitin Shete,AE,Active,
-Unit 8,Boiler Control Desk,Gopikrishna Gadle,Dy.EE,Active,
+Unit 8,Boiler Control Desk,Gopikrishna Gadle,Dy.EE,Active,[span_12](start_span)[span_12](end_span)
 Unit 8,Drum Level Desk,Rajshekhar Salegaonkar,AE,Active,
-Unit 8,Drum Level Desk,Balaji Kangaonkar,Dy.EE,Active,
-Unit 8,Drum Level Desk,Machhindranath Pichad,Dy.EE,Active,
-Unit 8,Drum Level Desk,Sunil Sontakke,AE,Active,
+Unit 8,Drum Level Desk,Balaji Kangaonkar,Dy.EE,Active,[span_13](start_span)[span_13](end_span)
+Unit 8,Drum Level Desk,Machhindranath Pichad,Dy.EE,Active,[span_14](start_span)[span_14](end_span)
+Unit 8,Drum Level Desk,Sunil Sontakke,AE,Active,[span_15](start_span)[span_15](end_span)
 Unit 8,Drum Level Desk,VACANT,,VACANCY,
-Unit 8,Boiler API (BAPI),Sanjay Padkanthwar,AE,Active,
-Unit 8,Boiler API (BAPI),Chanveer Guddewadi,JE,Active,
-Unit 8,Boiler API (BAPI),Kishor Dhopte,AE,Active,
+Unit 8,Boiler API (BAPI),Sanjay Padkanthwar,AE,Active,[span_16](start_span)[span_16](end_span)
+Unit 8,Boiler API (BAPI),Chanveer Guddewadi,JE,Active,[span_17](start_span)[span_17](end_span)
+Unit 8,Boiler API (BAPI),Kishor Dhopte,AE,Active,[span_18](start_span)[span_18](end_span)
 Unit 8,Boiler API (BAPI),Sudhir Gitte,AE,Active,
-Unit 8,Turbine API (TAPI),Amol Dhongade,AE,Active,
-Unit 8,Turbine API (TAPI),Santosh Chaturbhuj,AE,Active,
-Unit 8,Turbine API (TAPI),Sarfrazuddin Shaikh,JE,Active,
-Unit 8,Turbine API (TAPI),Sushil Thosar,AE,Active,
+Unit 8,Turbine API (TAPI),Amol Dhongade,AE,Active,[span_19](start_span)[span_19](end_span)
+Unit 8,Turbine API (TAPI),Santosh Chaturbhuj,AE,Active,[span_20](start_span)[span_20](end_span)
+Unit 8,Turbine API (TAPI),Sarfrazuddin Shaikh,JE,Active,[span_21](start_span)[span_21](end_span)
+Unit 8,Turbine API (TAPI),Sushil Thosar,AE,Active,[span_22](start_span)[span_22](end_span)
